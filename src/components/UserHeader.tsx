@@ -8,14 +8,28 @@ import { userApi, studentApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 
 // Hệ thống cấp độ dựa trên điểm
+// Hệ thống 20 cấp độ vinh danh iClever
 const LEVELS = [
     { level: 1, name: 'Tân binh học đường', minPoints: 0 },
-    { level: 2, name: 'Học sinh chăm chỉ', minPoints: 100 },
-    { level: 3, name: 'Học sinh giỏi', minPoints: 250 },
-    { level: 4, name: 'Học sinh xuất sắc', minPoints: 450 },
-    { level: 5, name: 'Chiến binh học đường', minPoints: 700 },
-    { level: 6, name: 'Học bá', minPoints: 1000 },
-    { level: 7, name: 'Thần đồng', minPoints: 1400 },
+    { level: 2, name: 'Mầm non học thuật', minPoints: 100 },
+    { level: 3, name: 'Học sinh chuyên cần', minPoints: 250 },
+    { level: 4, name: 'Người tìm tòi', minPoints: 450 },
+    { level: 5, name: 'Người khám phá', minPoints: 700 },
+    { level: 6, name: 'Người chinh phục', minPoints: 1000 },
+    { level: 7, name: 'Học sinh tích cực', minPoints: 1350 },
+    { level: 8, name: 'Học sinh vững vàng', minPoints: 1750 },
+    { level: 9, name: 'Học sinh ưu tú', minPoints: 2200 },
+    { level: 10, name: 'Học sinh xuất sắc', minPoints: 2700 },
+    { level: 11, name: 'Kỹ năng điêu luyện', minPoints: 3300 },
+    { level: 12, name: 'Tư duy nhạy bén', minPoints: 4000 },
+    { level: 13, name: 'Trí tuệ thông thái', minPoints: 4800 },
+    { level: 14, name: 'Học bá iClever', minPoints: 5700 },
+    { level: 15, name: 'Bậc thầy tri thức', minPoints: 6700 },
+    { level: 16, name: 'Cao thủ học đường', minPoints: 7800 },
+    { level: 17, name: 'Đại sư học thuật', minPoints: 9000 },
+    { level: 18, name: 'Thiên tài xuất chúng', minPoints: 10500 },
+    { level: 19, name: 'Vô song kỳ tài', minPoints: 12500 },
+    { level: 20, name: 'Huyền thoại iClever', minPoints: 15000 },
 ];
 
 function getLevelInfo(points: number) {
