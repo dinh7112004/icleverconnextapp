@@ -15,10 +15,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { authApi } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 export default function RegisterScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',
@@ -72,36 +74,38 @@ export default function RegisterScreen({ navigation }: any) {
     return (
         <KeyboardAvoidingView 
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
+            style={[styles.container, { backgroundColor: theme.background }]}
         >
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color="#2c3e50" />
+                    <Ionicons name="arrow-back" size={24} color={theme.text} />
                 </TouchableOpacity>
 
                 <View style={styles.header}>
-                    <Text style={styles.title}>Tạo tài khoản</Text>
-                    <Text style={styles.subtitle}>Tham gia cộng đồng học tập thông minh</Text>
+                    <Text style={[styles.title, { color: theme.text }]}>Tạo tài khoản</Text>
+                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Tham gia cộng đồng học tập thông minh</Text>
                 </View>
 
                 <View style={styles.form}>
-                    <Text style={styles.label}>Họ và tên</Text>
-                    <View style={styles.inputContainer}>
-                        <Ionicons name="person-outline" size={20} color="#7f8c8d" style={styles.inputIcon} />
+                    <Text style={[styles.label, { color: theme.text }]}>Họ và tên</Text>
+                    <View style={[styles.inputContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        <Ionicons name="person-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { color: theme.text }]}
                             placeholder="Nguyễn Văn A"
+                            placeholderTextColor={theme.textSecondary}
                             value={formData.fullName}
                             onChangeText={(val) => updateField('fullName', val)}
                         />
                     </View>
 
-                    <Text style={styles.label}>Email</Text>
-                    <View style={styles.inputContainer}>
-                        <Ionicons name="mail-outline" size={20} color="#7f8c8d" style={styles.inputIcon} />
+                    <Text style={[styles.label, { color: theme.text }]}>Email</Text>
+                    <View style={[styles.inputContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        <Ionicons name="mail-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { color: theme.text }]}
                             placeholder="example@email.com"
+                            placeholderTextColor={theme.textSecondary}
                             value={formData.email}
                             onChangeText={(val) => updateField('email', val)}
                             keyboardType="email-address"
@@ -109,12 +113,13 @@ export default function RegisterScreen({ navigation }: any) {
                         />
                     </View>
 
-                    <Text style={styles.label}>Trường học</Text>
-                    <View style={styles.inputContainer}>
-                        <Ionicons name="business-outline" size={20} color="#7f8c8d" style={styles.inputIcon} />
+                    <Text style={[styles.label, { color: theme.text }]}>Trường học</Text>
+                    <View style={[styles.inputContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        <Ionicons name="business-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { color: theme.text }]}
                             placeholder="Tên trường của bạn"
+                            placeholderTextColor={theme.textSecondary}
                             value={formData.schoolName}
                             onChangeText={(val) => updateField('schoolName', val)}
                         />
@@ -122,11 +127,12 @@ export default function RegisterScreen({ navigation }: any) {
 
                     <View style={styles.row}>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Lớp</Text>
-                            <View style={[styles.inputContainer, { marginRight: 5 }]}>
+                            <Text style={[styles.label, { color: theme.text }]}>Lớp</Text>
+                            <View style={[styles.inputContainer, { backgroundColor: theme.surface, borderColor: theme.border, marginRight: 5 }]}>
                                 <TextInput
-                                    style={styles.input}
+                                    style={[styles.input, { color: theme.text }]}
                                     placeholder="Lớp 7A1"
+                                    placeholderTextColor={theme.textSecondary}
                                     value={formData.className}
                                     onChangeText={(val) => updateField('className', val)}
                                 />
@@ -134,12 +140,13 @@ export default function RegisterScreen({ navigation }: any) {
                         </View>
                     </View>
 
-                    <Text style={styles.label}>Mật khẩu</Text>
-                    <View style={styles.inputContainer}>
-                        <Ionicons name="lock-closed-outline" size={20} color="#7f8c8d" style={styles.inputIcon} />
+                    <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
+                    <View style={[styles.inputContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        <Ionicons name="lock-closed-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { color: theme.text }]}
                             placeholder="********"
+                            placeholderTextColor={theme.textSecondary}
                             value={formData.password}
                             onChangeText={(val) => updateField('password', val)}
                             secureTextEntry={!showPassword}
@@ -148,13 +155,13 @@ export default function RegisterScreen({ navigation }: any) {
                             <Ionicons 
                                 name={showPassword ? "eye-off-outline" : "eye-outline"} 
                                 size={20} 
-                                color="#7f8c8d" 
+                                color={theme.textSecondary} 
                             />
                         </TouchableOpacity>
                     </View>
 
-                    <Text style={styles.termsText}>
-                        Bằng cách đăng ký, bạn đồng ý với <Text style={styles.termsLink}>Điều khoản & Chính sách</Text> của chúng tôi.
+                    <Text style={[styles.termsText, { color: theme.textSecondary }]}>
+                        Bằng cách đăng ký, bạn đồng ý với <Text style={[styles.termsLink, { color: theme.primary }]}>Điều khoản & Chính sách</Text> của chúng tôi.
                     </Text>
 
                     <TouchableOpacity 
@@ -177,9 +184,9 @@ export default function RegisterScreen({ navigation }: any) {
                     </TouchableOpacity>
 
                     <View style={styles.loginContainer}>
-                        <Text style={styles.hasAccountText}>Đã có tài khoản? </Text>
+                        <Text style={[styles.hasAccountText, { color: theme.textSecondary }]}>Đã có tài khoản? </Text>
                         <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                            <Text style={styles.loginLink}>Đăng nhập</Text>
+                            <Text style={[styles.loginLink, { color: theme.primary }]}>Đăng nhập</Text>
                         </TouchableOpacity>
                     </View>
                 </View>

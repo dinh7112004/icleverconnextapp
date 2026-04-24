@@ -1,168 +1,349 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
-    SafeAreaView, ActivityIndicator, Image, FlatList, Dimensions, TextInput
+    SafeAreaView, ActivityIndicator, Image, FlatList, Dimensions, TextInput, Share, Alert, KeyboardAvoidingView, Platform, RefreshControl
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { newsApi } from '../services/api';
+import { newsApi, studentApi, userApi } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type TabType = 'school' | 'class';
+// Memoized Activity Item for performance
+const ActivityItem = React.memo(({ item, currentUser, theme, isDark, onLike, onComment, onShare, commentText, onCommentTextChange, expanded, onToggleComments, imageError, onImageError, getRoleLabel }: any) => {
+    const isLiked = useMemo(() => {
+        const currentId = currentUser?.id || currentUser?._id;
+        return item.likes && currentId && item.likes.includes(currentId);
+    }, [item.likes, currentUser]);
 
-export default function ActivitiesScreen({ navigation, route }: any) {
-    const [activeTab, setActiveTab] = useState<TabType>('class');
-    const [activities, setActivities] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+    const likesCount = item.likes?.length || 0;
 
-    useEffect(() => {
-        if (route?.params?.tab) {
-            setActiveTab(route.params.tab);
-        }
-    }, [route?.params?.tab]);
-
-    useEffect(() => {
-        fetchActivities();
-    }, []);
-
-    const fetchActivities = async () => {
-        try {
-            const response = await newsApi.getAll();
-            setActivities(response.data.data);
-        } catch (error) {
-            console.error('Error fetching activities:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const toggleComments = (id: string) => {
-        setExpandedComments(prev => ({
-            ...prev,
-            [id]: !prev[id]
-        }));
-    };
-
-    const filteredData = activities.filter(item => {
-        if (activeTab === 'school') return item.badge === 'HOẠT ĐỘNG TRƯỜNG';
-        if (activeTab === 'class') return item.badge === 'HOẠT ĐỘNG LỚP';
-        return true;
-    });
-
-    const renderActivityItem = ({ item }: { item: any }) => {
-        const isExpanded = expandedComments[item._id] || false;
-
-        return (
-            <View style={styles.card}>
-                {/* 1. Header: Avatar + Name + Time */}
-                <View style={styles.cardHeader}>
-                    <View style={styles.avatarContainer}>
-                        <MaterialCommunityIcons name={item.sourceIcon || 'school'} size={24} color="#3b5998" />
+    return (
+        <View style={[styles.card, { backgroundColor: theme.surface }]}>
+            {/* Header */}
+            <View style={styles.cardHeader}>
+                <View style={styles.headerInfo}>
+                    <View style={[styles.avatarCircle, { backgroundColor: isDark ? '#2D3748' : '#ebf4ff' }]}>
+                        <MaterialCommunityIcons name="school" size={20} color={theme.primary} />
                     </View>
-                    <View style={styles.headerInfo}>
-                        <Text style={styles.sourceName}>{item.sourceName || 'Trường THCS iClever'}</Text>
-                        <Text style={styles.timestamp}>08:00 {new Date(item.createdAt).toLocaleDateString('vi-VN')}</Text>
+                    <View>
+                        <Text style={[styles.sourceName, { color: theme.text }]}>{item.data?.sourceName || 'Trường Tiểu học Ngôi Sao'}</Text>
+                        <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>
+                            {new Date(item.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                        </Text>
                     </View>
                 </View>
-
-                {/* 2. Title & Description */}
-                <View style={styles.textContainer}>
-                    <Text style={styles.cardTitle}>{item.title}</Text>
-                    <Text style={styles.cardDesc}>{item.content}</Text>
+                <View style={[styles.categoryBadge, { backgroundColor: isDark ? '#1e3a8a' : '#e1f5fe' }]}>
+                    <Text style={[styles.categoryText, { color: isDark ? '#93c5fd' : '#039be5' }]}>{item.type === 'news' ? 'HOẠT ĐỘNG TRƯỜNG' : 'HOẠT ĐỘNG LỚP'}</Text>
                 </View>
+            </View>
 
-                {/* 3. Image */}
-                <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
+            {/* Content */}
+            <View style={styles.contentArea}>
+                <Text style={[styles.titleText, { color: theme.text }]}>{item.title}</Text>
+                <Text style={[styles.bodyText, { color: theme.textSecondary }]}>{item.message}</Text>
+            </View>
 
-                {/* 4. Interaction Summary: Likes */}
-                <View style={styles.interactionSummary}>
-                    <Ionicons name="heart" size={18} color="#e74c3c" />
-                    <Text style={styles.likesCountText}>{item.likesCount || 0} yêu thích</Text>
-                </View>
-
-                {/* 5. Action Buttons: Like, Comment, Share */}
-                <View style={styles.actionRow}>
-                    <View style={styles.actionButtonsLeft}>
-                        <TouchableOpacity style={styles.actionBtn}>
-                            <Ionicons name="heart-outline" size={24} color="#7f8c8d" />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn} onPress={() => toggleComments(item._id)}>
-                            <Ionicons name={isExpanded ? "chatbubble" : "chatbubble-outline"} size={22} color={isExpanded ? "#3b5998" : "#7f8c8d"} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn}>
-                            <Ionicons name="share-social-outline" size={22} color="#7f8c8d" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {/* 6. Comments Section (Conditionally Rendered) */}
-                {isExpanded && (
-                    <View style={styles.commentSection}>
-                        <Text style={styles.noCommentText}>Chưa có bình luận nào.</Text>
-                        
-                        <View style={styles.commentInputWrapper}>
-                            <TextInput 
-                                style={styles.commentInput}
-                                placeholder="Viết bình luận..."
-                                placeholderTextColor="#bdc3c7"
-                            />
-                            <TouchableOpacity style={styles.sendBtn}>
-                                <Ionicons name="paper-plane-outline" size={20} color="#3b5998" />
-                            </TouchableOpacity>
+            {/* Image Section */}
+            <View style={styles.mediaContainer}>
+                {item.data?.imageUrl && !imageError ? (
+                    <Image 
+                        source={{ uri: item.data.imageUrl }} 
+                        style={styles.mainImage}
+                        resizeMode="cover"
+                        onError={onImageError}
+                    />
+                ) : (
+                    <View style={[styles.mainImage, styles.placeholderImage, { backgroundColor: theme.primary }]}>
+                        <View style={styles.placeholderOverlay}>
+                            <MaterialCommunityIcons name="school-outline" size={80} color="rgba(255,255,255,0.4)" />
+                            <Text style={styles.placeholderText}>iClever Connection</Text>
                         </View>
                     </View>
                 )}
             </View>
-        );
+
+            {/* Interaction Row */}
+            <View style={styles.interactionRow}>
+                <View style={styles.likesCountRow}>
+                    <Ionicons name="heart" size={16} color="#ef4444" />
+                    <Text style={[styles.interactionText, { color: theme.textSecondary }]}>{likesCount} yêu thích</Text>
+                </View>
+                <View style={styles.actionButtons}>
+                    <TouchableOpacity onPress={() => onLike(item._id)}>
+                        <Ionicons name={isLiked ? "heart" : "heart-outline"} size={24} color={isLiked ? "#ff4757" : theme.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={{ marginHorizontal: 15 }} onPress={() => onToggleComments(item._id)}>
+                        <Ionicons name="chatbubble-outline" size={22} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => onShare(item)}>
+                        <Ionicons name="share-social-outline" size={22} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {/* Comments Section (Toggleable) */}
+            {expanded && (
+                <View style={[styles.commentsListArea, { borderTopColor: theme.border }]}>
+                    {item.comments && item.comments.length > 0 ? (
+                        <View style={styles.commentItems}>
+                            {item.comments.map((c: any, index: number) => (
+                                <View key={index} style={styles.commentEntry}>
+                                    <View style={[styles.commentAvatarMini, { backgroundColor: theme.primary }]}>
+                                        <Text style={styles.commentAvatarText}>{c.userName?.[0] || 'U'}</Text>
+                                    </View>
+                                    <View style={[styles.commentBubble, { backgroundColor: isDark ? '#2D3748' : '#f0f2f5' }]}>
+                                        <Text style={[styles.commentName, { color: theme.text }]}>{c.userName}</Text>
+                                        <Text style={[styles.commentBody, { color: theme.text }]}>{c.content}</Text>
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
+                    ) : (
+                        <Text style={[styles.noCommentsText, { color: theme.textSecondary }]}>Chưa có bình luận nào.</Text>
+                    )}
+
+                    <View style={styles.commentInputRow}>
+                        <View style={[styles.commentInputBox, { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: theme.border }]}>
+                            <TextInput
+                                style={[styles.commentInputField, { color: theme.text }]}
+                                placeholder="Viết bình luận..."
+                                placeholderTextColor={theme.textSecondary}
+                                value={commentText}
+                                onChangeText={onCommentTextChange}
+                            />
+                            <TouchableOpacity onPress={() => onComment(item._id)} disabled={!commentText.trim()}>
+                                <Ionicons 
+                                    name="paper-plane-outline" 
+                                    size={20} 
+                                    color={commentText.trim() ? theme.primary : (isDark ? '#475569' : '#bdc3c7')} 
+                                />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            )}
+        </View>
+    );
+});
+
+const CACHE_KEY = 'activities_cache_';
+
+export default function ActivitiesScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
+    const [activeTab, setActiveTab] = useState<'class' | 'school'>('school');
+    const [activities, setActivities] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+    const [commentTexts, setCommentTexts] = useState<Record<string, string>>({});
+    const [currentUser, setCurrentUser] = useState<any>(null);
+    const [studentInfo, setStudentInfo] = useState<any>(null);
+    const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+
+    const loadInitialData = useCallback(async () => {
+        try {
+            const userStr = await AsyncStorage.getItem('user');
+            if (userStr) {
+                const user = JSON.parse(userStr);
+                setCurrentUser(user);
+                
+                // Background update profile
+                userApi.getProfile().then(res => {
+                    const freshUser = res.data.data || res.data;
+                    if (freshUser) {
+                        setCurrentUser(freshUser);
+                        AsyncStorage.setItem('user', JSON.stringify(freshUser));
+                    }
+                }).catch(() => {});
+
+                const studentRes = await studentApi.getProfile();
+                setStudentInfo(studentRes.data.data || studentRes.data);
+            }
+        } catch (error) {}
+    }, []);
+
+    const fetchActivities = useCallback(async (isRefresh = false) => {
+        if (!isRefresh) setLoading(true);
+        try {
+            // Load from cache first
+            const cacheKey = `${CACHE_KEY}${activeTab}`;
+            if (!isRefresh) {
+                const cached = await AsyncStorage.getItem(cacheKey);
+                if (cached) {
+                    setActivities(JSON.parse(cached));
+                    setLoading(false);
+                }
+            }
+
+            const params: any = { type: activeTab === 'school' ? 'news' : 'activity' };
+            if (activeTab === 'class' && studentInfo?.currentClassId) params.classId = studentInfo.currentClassId;
+
+            const response = await newsApi.getAll(params);
+            let data = response.data;
+            while (data.data && !Array.isArray(data)) data = data.data;
+            let list = Array.isArray(data) ? data : [];
+            
+            setActivities(list);
+            AsyncStorage.setItem(cacheKey, JSON.stringify(list));
+        } catch (error) {
+            console.error('Error fetching activities:', error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [activeTab, studentInfo?.currentClassId]);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadInitialData();
+            fetchActivities();
+        }, [loadInitialData, fetchActivities])
+    );
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchActivities(true);
     };
 
+    const handleLike = async (id: string) => {
+        const item = activities.find(a => a._id === id);
+        if (item?.isMock) return;
+
+        const currentId = currentUser?.id || currentUser?._id;
+        if (!currentId) return;
+
+        // Optimistic update
+        setActivities(prev => prev.map(a => {
+            if (a._id === id) {
+                const likes = a.likes || [];
+                const isLiked = likes.includes(currentId);
+                const newLikes = isLiked ? likes.filter((l: string) => l !== currentId) : [...likes, currentId];
+                return { ...a, likes: newLikes };
+            }
+            return a;
+        }));
+
+        try {
+            const response = await newsApi.like(id);
+            const updated = response.data.data || response.data;
+            if (updated) {
+                setActivities(prev => {
+                    const newList = prev.map(a => a._id === id ? { ...a, likes: updated.likes } : a);
+                    AsyncStorage.setItem(`${CACHE_KEY}${activeTab}`, JSON.stringify(newList));
+                    return newList;
+                });
+            }
+        } catch (error) {
+            onRefresh();
+        }
+    };
+
+    const handleCommentSubmit = async (id: string) => {
+        const commentText = commentTexts[id];
+        if (!commentText?.trim()) return;
+
+        const userId = currentUser?.id || currentUser?._id;
+        if (!userId) return;
+
+        const newComment = {
+            userId: userId,
+            userName: currentUser.fullName || 'Bạn',
+            content: commentText.trim(),
+            createdAt: new Date().toISOString(),
+        };
+        
+        setActivities(prev => prev.map(act => act._id === id ? { ...act, comments: [...(act.comments || []), newComment] } : act));
+        setCommentTexts(prev => ({ ...prev, [id]: '' }));
+
+        try {
+            const response = await newsApi.comment(id, commentText.trim(), currentUser.fullName, currentUser.avatarUrl, currentUser.role);
+            const updated = response.data.data || response.data;
+            if (updated) {
+                setActivities(prev => {
+                    const newList = prev.map(a => a._id === id ? { ...a, comments: updated.comments } : a);
+                    AsyncStorage.setItem(`${CACHE_KEY}${activeTab}`, JSON.stringify(newList));
+                    return newList;
+                });
+            }
+        } catch (error) {
+            onRefresh();
+        }
+    };
+
+    const handleShare = async (item: any) => {
+        try {
+            await Share.share({ title: item.title, message: `${item.title}\n\n${item.message}` });
+        } catch (error) {}
+    };
+
+    const getRoleLabel = (role?: string) => {
+        if (!role) return 'Người dùng';
+        const r = role.toUpperCase();
+        if (r.includes('TEACHER')) return 'Giáo viên';
+        if (r === 'STUDENT') return 'Học sinh';
+        if (r === 'PARENT') return 'Phụ huynh';
+        return 'Nhà trường';
+    };
+
+    const renderItem = useCallback(({ item }: any) => (
+        <ActivityItem 
+            item={item}
+            currentUser={currentUser}
+            theme={theme}
+            isDark={isDark}
+            onLike={handleLike}
+            onComment={handleCommentSubmit}
+            onShare={handleShare}
+            commentText={commentTexts[item._id] || ''}
+            onCommentTextChange={(t: string) => setCommentTexts(prev => ({ ...prev, [item._id]: t }))}
+            expanded={expandedComments[item._id]}
+            onToggleComments={(id: string) => setExpandedComments(prev => ({ ...prev, [id]: !prev[id] }))}
+            imageError={imageErrors[item._id]}
+            onImageError={() => setImageErrors(prev => ({ ...prev, [item._id]: true }))}
+            getRoleLabel={getRoleLabel}
+        />
+    ), [currentUser, theme, isDark, handleLike, handleCommentSubmit, handleShare, commentTexts, expandedComments, imageErrors]);
+
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Hoạt động</Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={[styles.screenHeader, { backgroundColor: theme.surface }]}>
+                <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="chevron-back" size={28} color={theme.text} /></TouchableOpacity>
+                <Text style={[styles.screenTitle, { color: theme.text }]}>Hoạt động</Text>
                 <View style={{ width: 44 }} />
             </View>
 
-            {/* Tab Switcher */}
-            <View style={styles.tabWrapper}>
-                <View style={styles.tabContainer}>
-                    {[
-                        { key: 'class', label: 'Hoạt động lớp' },
-                        { key: 'school', label: 'Hoạt động trường' }
-                    ].map((tab) => (
-                        <TouchableOpacity
-                            key={tab.key}
-                            style={[styles.tabButton, activeTab === tab.key && styles.activeTabBtn]}
-                            onPress={() => setActiveTab(tab.key as TabType)}
-                        >
-                            <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
-                                {tab.label}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
+            <View style={[styles.tabsRow, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+                <TouchableOpacity style={[styles.tabItem, activeTab === 'class' && [styles.tabItemActive, { borderBottomColor: theme.primary }]]} onPress={() => setActiveTab('class')}>
+                    <Ionicons name="people-outline" size={20} color={activeTab === 'class' ? theme.primary : theme.textSecondary} />
+                    <Text style={[styles.tabText, { color: theme.textSecondary }, activeTab === 'class' && [styles.tabTextActive, { color: theme.primary }]]}>Hoạt động lớp</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tabItem, activeTab === 'school' && [styles.tabItemActive, { borderBottomColor: theme.primary }]]} onPress={() => setActiveTab('school')}>
+                    <Ionicons name="business-outline" size={20} color={activeTab === 'school' ? theme.primary : theme.textSecondary} />
+                    <Text style={[styles.tabText, { color: theme.textSecondary }, activeTab === 'school' && [styles.tabTextActive, { color: theme.primary }]]}>Hoạt động trường</Text>
+                </TouchableOpacity>
             </View>
 
-            {loading ? (
-                <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#3b5998" />
-                </View>
+            {loading && activities.length === 0 ? (
+                <View style={styles.loadingCenter}><ActivityIndicator size="large" color={theme.primary} /></View>
             ) : (
                 <FlatList
-                    data={filteredData}
+                    data={activities}
                     keyExtractor={(item) => item._id}
-                    renderItem={renderActivityItem}
-                    contentContainerStyle={styles.listContent}
-                    showsVerticalScrollIndicator={false}
+                    renderItem={renderItem}
+                    contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                    removeClippedSubviews={true}
+                    initialNumToRender={5}
+                    maxToRenderPerBatch={5}
+                    windowSize={5}
+                    updateCellsBatchingPeriod={30}
                     ListEmptyComponent={
                         <View style={styles.emptyBox}>
-                            <Ionicons name="images-outline" size={60} color="#ddd" />
-                            <Text style={styles.emptyText}>Chưa có hoạt động nào</Text>
+                            <MaterialCommunityIcons name="newspaper-variant-outline" size={60} color={isDark ? '#2D3748' : '#dfe6e9'} />
+                            <Text style={[styles.emptyLabel, { color: theme.textSecondary }]}>Chưa có hoạt động mới nào.</Text>
                         </View>
                     }
                 />
@@ -172,82 +353,47 @@ export default function ActivitiesScreen({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f8f9fa' },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingHorizontal: 16, 
-        height: 60, 
-        backgroundColor: 'white',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0'
-    },
-    backBtn: { width: 44, height: 44, justifyContent: 'center' },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
-    
-    tabWrapper: { backgroundColor: 'white', paddingVertical: 12, paddingHorizontal: 20 },
-    tabContainer: { 
-        flexDirection: 'row', 
-        backgroundColor: '#f1f3f6', 
-        borderRadius: 12, 
-        padding: 4 
-    },
-    tabButton: { 
-        flex: 1, 
-        paddingVertical: 10, 
-        alignItems: 'center', 
-        borderRadius: 10 
-    },
-    activeTabBtn: { 
-        backgroundColor: 'white', 
-        shadowColor: '#000', 
-        shadowOffset: { width: 0, height: 2 }, 
-        shadowOpacity: 0.1, 
-        shadowRadius: 4, 
-        elevation: 2 
-    },
-    tabText: { fontSize: 14, color: '#7f8c8d', fontWeight: '600' },
-    activeTabText: { color: '#3b5998', fontWeight: 'bold' },
-
-    listContent: { padding: 12, paddingBottom: 40 },
-    card: { 
-        backgroundColor: 'white', 
-        borderRadius: 16, 
-        marginBottom: 16, 
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 3,
-        overflow: 'hidden'
-    },
-    cardHeader: { flexDirection: 'row', padding: 16, alignItems: 'center' },
-    avatarContainer: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f0f3f9', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    headerInfo: { flex: 1 },
-    sourceName: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50' },
-    timestamp: { fontSize: 12, color: '#95a5a6', marginTop: 2 },
-    
-    textContainer: { paddingHorizontal: 16, paddingBottom: 16 },
-    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50', marginBottom: 6 },
-    cardDesc: { fontSize: 14, color: '#34495e', lineHeight: 22 },
-    
-    cardImage: { width: '100%', height: 220 },
-    
-    interactionSummary: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f1f3f6' },
-    likesCountText: { fontSize: 13, color: '#7f8c8d', marginLeft: 6 },
-    
-    actionRow: { flexDirection: 'row', padding: 4, justifyContent: 'flex-end', borderBottomWidth: 1, borderBottomColor: '#f1f3f6' },
-    actionButtonsLeft: { flexDirection: 'row', alignItems: 'center' },
-    actionBtn: { padding: 8, marginHorizontal: 4 },
-    
-    commentSection: { padding: 16, backgroundColor: '#fafbfc' },
-    noCommentText: { textAlign: 'center', color: '#bdc3c7', fontSize: 13, marginBottom: 16 },
-    commentInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderRadius: 25, paddingHorizontal: 16, borderWidth: 1, borderColor: '#eee' },
-    commentInput: { flex: 1, paddingVertical: 10, fontSize: 14, color: '#2c3e50' },
-    sendBtn: { marginLeft: 8 },
-
+    container: { flex: 1 },
+    loadingCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    screenHeader: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
+    screenTitle: { fontSize: 18, fontWeight: '700' },
+    tabsRow: { flexDirection: 'row', borderBottomWidth: 1 },
+    tabItem: { flex: 1, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+    tabItemActive: { borderBottomColor: '#3498db' },
+    tabText: { marginLeft: 8, fontSize: 14, fontWeight: '600' },
+    tabTextActive: { color: '#3498db' },
+    card: { borderRadius: 15, marginBottom: 16, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+    cardHeader: { flexDirection: 'row', padding: 12, alignItems: 'center', justifyContent: 'space-between' },
+    headerInfo: { flexDirection: 'row', alignItems: 'center' },
+    avatarCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+    sourceName: { fontSize: 15, fontWeight: '700' },
+    timeLabel: { fontSize: 11, marginTop: 2 },
+    categoryBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+    categoryText: { fontSize: 9, fontWeight: '800' },
+    contentArea: { paddingHorizontal: 12, paddingBottom: 12 },
+    titleText: { fontSize: 17, fontWeight: '700', marginBottom: 6 },
+    bodyText: { fontSize: 14, lineHeight: 21 },
+    mediaContainer: { width: '100%', height: 240, backgroundColor: '#f0f2f5' },
+    mainImage: { width: '100%', height: '100%' },
+    placeholderImage: { justifyContent: 'center', alignItems: 'center' },
+    placeholderOverlay: { alignItems: 'center' },
+    placeholderText: { color: 'white', fontWeight: '900', fontSize: 24, marginTop: 10, letterSpacing: 2 },
+    interactionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12 },
+    likesCountRow: { flexDirection: 'row', alignItems: 'center' },
+    interactionText: { fontSize: 13, marginLeft: 6 },
+    actionButtons: { flexDirection: 'row', alignItems: 'center' },
+    commentsListArea: { padding: 12, borderTopWidth: 1 },
+    commentItems: { marginBottom: 12 },
+    commentEntry: { flexDirection: 'row', marginBottom: 10 },
+    commentAvatarMini: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+    commentAvatarText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+    commentBubble: { flex: 1, padding: 10, borderRadius: 12 },
+    commentName: { fontSize: 13, fontWeight: 'bold', marginBottom: 2 },
+    commentBody: { fontSize: 13 },
+    noCommentsText: { textAlign: 'center', fontSize: 13, marginVertical: 10 },
+    commentInputRow: { marginTop: 8 },
+    commentInputBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, height: 40 },
+    commentInputField: { flex: 1, fontSize: 14 },
     emptyBox: { alignItems: 'center', marginTop: 100 },
-    emptyText: { color: '#bdc3c7', fontSize: 15, marginTop: 15 }
+    emptyLabel: { marginTop: 12, fontSize: 15 }
 });

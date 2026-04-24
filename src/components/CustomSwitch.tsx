@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { StyleSheet, Animated, Pressable, View } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 
 interface CustomSwitchProps {
     value: boolean;
@@ -11,9 +12,12 @@ interface CustomSwitchProps {
 export default function CustomSwitch({ 
     value, 
     onValueChange, 
-    activeColor = '#3b82f6', 
-    inactiveColor = '#e2e8f0' 
+    activeColor, 
+    inactiveColor 
 }: CustomSwitchProps) {
+    const { isDark, theme } = useTheme();
+    const finalActiveColor = activeColor || theme.primary;
+    const finalInactiveColor = inactiveColor || (isDark ? '#334155' : '#e2e8f0');
     const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
 
     useEffect(() => {
@@ -31,7 +35,7 @@ export default function CustomSwitch({
 
     const backgroundColor = animatedValue.interpolate({
         inputRange: [0, 1],
-        outputRange: [inactiveColor, activeColor],
+        outputRange: [finalInactiveColor, finalActiveColor],
     });
 
     return (

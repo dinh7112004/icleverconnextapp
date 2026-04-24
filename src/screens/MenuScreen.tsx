@@ -1,17 +1,22 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity, Modal, Image } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authEvents } from '../services/authEvents';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 interface MenuScreenProps {
     isVisible: boolean;
     onClose: () => void;
-    setIsLoggedIn?: (val: boolean) => void;
     avatarUrl?: string;
 }
 
-export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUrl }: MenuScreenProps) {
+export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreenProps) {
+    const { isDark, theme } = useTheme();
+    const { t } = useLanguage();
     const navigation = useNavigation<any>();
     const [userRole, setUserRole] = React.useState<string>('STUDENT');
     const [userName, setUserName] = React.useState<string>('');
@@ -46,7 +51,7 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
     const handleLogout = async () => {
         try {
             await AsyncStorage.multiRemove(['userToken', 'refreshToken', 'user']);
-            if (setIsLoggedIn) setIsLoggedIn(false);
+            authEvents.emitLogout();
             onClose();
         } catch (error) {
             console.error('Error logging out:', error);
@@ -54,28 +59,35 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
     };
 
     const renderMenuItem = (icon: any, title: string, hasChevron = true, onPress?: () => void) => (
-        <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+        <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomColor: theme.border }]} 
+            onPress={onPress}
+        >
             <View style={styles.menuItemLeft}>
-                <View style={styles.iconCircle}>
-                    {icon}
+                <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2D3748' : '#f8f9fa' }]}>
+                    {React.cloneElement(icon as React.ReactElement<any>, { color: isDark ? '#60A5FA' : '#3b5998' })}
                 </View>
-                <Text style={styles.menuItemText}>{title}</Text>
+                <Text style={[styles.menuItemText, { color: theme.text }]}>{title}</Text>
             </View>
-            {hasChevron && <Ionicons name="chevron-forward" size={18} color="#bdc3c7" />}
+            {hasChevron && <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />}
         </TouchableOpacity>
     );
 
     return (
         <Modal
-            animationType={isVisible ? "slide" : "none"}
+            animationType="slide"
             transparent={false}
             visible={isVisible}
             onRequestClose={onClose}
         >
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
                 {/* --- TOP HEADER --- */}
-                <View style={styles.blueHeader}>
-                    <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                <View style={[styles.blueHeader, { backgroundColor: isDark ? '#1E293B' : '#3b5998' }]}>
+                    <TouchableOpacity 
+                        style={styles.closeBtn} 
+                        onPress={onClose}
+                        hitSlop={{ top: 30, bottom: 30, left: 30, right: 30 }}
+                    >
                         <Ionicons name="chevron-back" size={30} color="white" />
                     </TouchableOpacity>
 
@@ -88,16 +100,16 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                                         style={{ width: 70, height: 70, borderRadius: 35 }} 
                                     />
                                 ) : (
-                                    <Text style={{ fontSize: 32 }}>{avatarUrl || (userName ? userName.charAt(0) : '👨🏽‍🦲')}</Text>
+                                    <Text style={{ fontSize: 32 }}>{avatarUrl || (userName ? userName.charAt(0) : '👨🏽‍Đ')}</Text>
                                 )}
                             </View>
                         </View>
                         <View style={styles.profileText}>
-                            <Text style={styles.userName}>{userName || 'Người dùng'}</Text>
+                            <Text style={styles.userName}>{userName || t('common.user')}</Text>
                             <View style={styles.roleBadge}>
                                 <Text style={styles.roleBadgeText}>
-                                    {userRole === 'STUDENT' ? 'Học sinh' : 
-                                     userRole === 'PARENT' ? 'Phụ huynh' : userRole}
+                                    {userRole === 'STUDENT' ? t('common.student') : 
+                                     userRole === 'PARENT' ? t('common.parent') : userRole}
                                 </Text>
                             </View>
                         </View>
@@ -105,12 +117,12 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    {/* --- TÀI KHOẢN --- */}
+                    {/* --- ACCOUNT --- */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>TÀI KHOẢN</Text>
+                        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('menu.account')}</Text>
                         {renderMenuItem(
                             <Feather name="user" size={20} color="#3b5998" />, 
-                            "Hồ sơ học sinh", 
+                            t('menu.profile'), 
                             true,
                             () => {
                                 navigation.navigate('StudentProfile');
@@ -119,7 +131,7 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                         )}
                         {renderMenuItem(
                             <Feather name="lock" size={20} color="#3b5998" />, 
-                            "Đổi mật khẩu",
+                            t('menu.password'),
                             true,
                             () => {
                                 navigation.navigate('ChangePassword');
@@ -128,7 +140,7 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                         )}
                         {renderMenuItem(
                             <Feather name="bell" size={20} color="#3b5998" />, 
-                            "Cài đặt thông báo",
+                            t('menu.notifications'),
                             true,
                             () => {
                                 navigation.navigate('NotificationSettings');
@@ -137,12 +149,12 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                         )}
                     </View>
 
-                    {/* --- ỨNG DỤNG --- */}
+                    {/* --- APP --- */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>ỨNG DỤNG</Text>
+                        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('menu.app')}</Text>
                         {renderMenuItem(
                             <Feather name="shield" size={20} color="#3b5998" />, 
-                            "Chính sách bảo mật",
+                            t('menu.policy'),
                             true,
                             () => {
                                 navigation.navigate('PrivacyPolicy');
@@ -151,7 +163,7 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                         )}
                         {renderMenuItem(
                             <Feather name="help-circle" size={20} color="#3b5998" />, 
-                            "Trợ giúp & Hỗ trợ",
+                            t('menu.support'),
                             true,
                             () => {
                                 navigation.navigate('HelpSupport');
@@ -160,7 +172,7 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                         )}
                         {renderMenuItem(
                             <Feather name="settings" size={20} color="#3b5998" />, 
-                            "Cài đặt chung",
+                            t('menu.settings'),
                             true,
                             () => {
                                 navigation.navigate('GeneralSettings');
@@ -173,9 +185,9 @@ export default function MenuScreen({ isVisible, onClose, setIsLoggedIn, avatarUr
                 </ScrollView>
 
                 {/* --- LOGOUT BUTTON --- */}
-                <View style={styles.footer}>
-                    <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-                        <Text style={styles.logoutText}>Đăng xuất</Text>
+                <View style={[styles.footer, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
+                    <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: isDark ? '#1E293B' : 'white' }]} onPress={handleLogout}>
+                        <Text style={styles.logoutText}>{t('menu.logout')}</Text>
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
@@ -187,14 +199,16 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: 'white' },
     blueHeader: {
         backgroundColor: '#3b5998',
-        paddingTop: 10,
+        paddingTop: 20,
         paddingBottom: 35,
         paddingHorizontal: 20,
     },
     closeBtn: {
         alignSelf: 'flex-start',
-        padding: 5,
+        padding: 15,
+        marginLeft: -10,
         marginBottom: 10,
+        zIndex: 99,
     },
     profileSection: {
         flexDirection: 'row',

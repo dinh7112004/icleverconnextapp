@@ -1,14 +1,18 @@
 /**
  * iClever App - Real API Service
  * Replaces all mock data with actual Axios calls to the NestJS backend.
- * Base URL: http://localhost:3000/api/v1
+ * Base URL: https://iclerverconnextbackend.onrender.com/api/v1
  */
 
 import axios from 'axios';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Configuration ──────────────────────────────────────────────
-const BASE_URL = 'http://localhost:3000/api/v1';
+// const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1';
+// const BASE_URL = 'http://localhost:3000/api/v1'; // Dùng cho Simulator
+const BASE_URL = 'http://192.168.1.181:3000/api/v1'; // Đổi đuôi 180 thành 181
+
 
 // ─── Axios Instance ─────────────────────────────────────────────
 const apiClient = axios.create({
@@ -22,6 +26,7 @@ const apiClient = axios.create({
 // ─── Request Interceptor: tự động gắn JWT token ─────────────────
 apiClient.interceptors.request.use(
     async (config) => {
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
         const token = await AsyncStorage.getItem('userToken');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -49,6 +54,14 @@ apiClient.interceptors.response.use(
     }
 );
 
+// ─── Uploads ─────────────────────────────────────────────────────
+export const uploadApi = {
+    post: (data: FormData, folder: string = 'others') =>
+        apiClient.post(`/uploads?folder=${folder}`, data, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        }),
+};
+
 // ─── Auth ────────────────────────────────────────────────────────
 export const authApi = {
     login: (data: { identifier: string; password: string }) =>
@@ -59,6 +72,9 @@ export const authApi = {
 
     getProfile: () =>
         apiClient.get('/auth/me'),
+
+    changePassword: (data: any) =>
+        apiClient.post('/auth/change-password', data),
 
     refresh: (refreshToken: string) =>
         apiClient.post('/auth/refresh', { refreshToken }),
@@ -77,6 +93,9 @@ export const userApi = {
 export const studentApi = {
     getProfile: (studentId?: string) =>
         apiClient.get(studentId ? `/students/${studentId}` : '/students/me'),
+
+    updateProfile: (data: any) =>
+        apiClient.patch('/students/me', data),
 
     getAttendance: (studentId: string, params?: { startDate?: string; endDate?: string }) =>
         apiClient.get('/attendance', { params: { studentId, ...params } }),
@@ -110,10 +129,10 @@ export const academicApi = {
     // API Quiz
     getLessonQuizzes: (lessonId: string) =>
         apiClient.get(`/lms/lessons/${lessonId}/quizzes`),
-        
+
     startQuiz: (quizId: string, data: { studentId: string; studentName: string }) =>
         apiClient.post(`/lms/quizzes/${quizId}/start`, data),
-        
+
     submitQuiz: (attemptId: string, answers: Array<{ questionId: string; answer: any }>) =>
         apiClient.post(`/lms/quiz-attempts/${attemptId}/submit`, { answers }),
 
@@ -124,21 +143,31 @@ export const academicApi = {
         apiClient.get('/academic-records/grades', { params: { studentId } }),
 
     getGradeReport: (studentId: string, academicYearId: string, semester: string) =>
-        apiClient.get(`/academic-records/grades/student/${studentId}/report`, { 
-            params: { academicYearId, semester } 
+        apiClient.get(`/academic-records/grades/student/${studentId}/report`, {
+            params: { academicYearId, semester }
         }),
 
     getHomeworks: (classId: string) =>
-        apiClient.get('/lms/assignments', { params: { classId } }),
+        apiClient.get('lms/assignments', { params: { classId } }),
 
-    submitHomework: (assignmentId: string, data: { textContent: string; files?: any[] }) =>
-        apiClient.post(`/lms/assignments/${assignmentId}/submit`, data),
+    submitHomework: (assignmentId: string, data: any) => {
+        // Nếu data là FormData (có chứa file), gửi trực tiếp. 
+        // Nếu không, axios sẽ tự xử lý JSON.
+        return apiClient.post(`lms/assignments/${assignmentId}/submit`, data, {
+            headers: {
+                'Content-Type': data instanceof FormData ? 'multipart/form-data' : 'application/json',
+            },
+        });
+    },
 
     getSubmissions: (studentId: string) =>
-        apiClient.get('/lms/submissions', { params: { studentId } }),
+        apiClient.get('lms/submissions', { params: { studentId } }),
 
-    getAttendance: (studentId: string) =>
-        apiClient.get('/attendance', { params: { studentId, limit: 30 } }),
+    getAttendance: (studentId: string, params?: any) =>
+        apiClient.get('/attendance', { params: { studentId, ...params } }),
+
+    getAttendanceStats: (studentId: string, params?: any) =>
+        apiClient.get(`/attendance/student/${studentId}/stats`, { params }),
 };
 
 // ─── Notifications ───────────────────────────────────────────────
@@ -152,8 +181,16 @@ export const notificationApi = {
 
 // ─── News / Tin tức trường học ───────────────────────────────────
 export const newsApi = {
-    getAll: (params?: { page?: number; limit?: number }) =>
-        apiClient.get('/notifications', { params: { type: 'news', ...params } }),
+    getAll: (params?: { page?: number; limit?: number; type?: string; classId?: string }) => {
+        const queryParams = { type: 'news', ...params };
+        return apiClient.get('/notifications', { params: queryParams });
+    },
+
+    like: (id: string) =>
+        apiClient.post(`/notifications/${id}/like`),
+
+    comment: (id: string, content: string, userName?: string, userAvatar?: string, userRole?: string) =>
+        apiClient.post(`/notifications/${id}/comment`, { content, userName, userAvatar, userRole }),
 };
 
 // ─── Contact / Danh bạ giáo viên ─────────────────────────────────
@@ -225,7 +262,7 @@ export const notesApi = {
         apiClient.get(`/health/notes/student/${studentId}`),
 
     getSchoolNotice: () =>
-        apiClient.get('/schools/notice'),
+        apiClient.get('/health/notice'),
 
     submit: (data: {
         studentId: string;
@@ -256,6 +293,8 @@ export const libraryApi = {
 
     getBook: (id: string) =>
         apiClient.get(`/library/books/${id}`),
+    borrowBook: (id: string) =>
+        apiClient.post(`/library/books/${id}/borrow`),
 };
 
 // ─── Surveys / Khảo sát ────────────────────────────────────────────
@@ -265,18 +304,21 @@ export const surveyApi = {
 
     getSurvey: (id: string) =>
         apiClient.get(`/surveys/${id}`),
+
+    submitSurvey: (id: string) =>
+        apiClient.post(`/surveys/${id}/submit`),
 };
 
 // ─── Chat / Tin nhắn ──────────────────────────────────────────────
 export const chatApi = {
-    getChats: () =>
-        apiClient.get('/messaging/conversations'),
+    getThreads: () =>
+        apiClient.get('/messaging/threads'),
 
-    getMessages: (chatId: string) =>
-        apiClient.get(`/messaging/conversations/${chatId}/messages`),
+    getConversation: (userId: string, studentId?: string) =>
+        apiClient.get(`/messaging/conversations/${userId}`, { params: { studentId } }),
 
-    sendMessage: (chatId: string, content: string) =>
-        apiClient.post(`/messaging/conversations/${chatId}/messages`, { content }),
+    sendMessage: (recipientId: string, body: string, studentId?: string) =>
+        apiClient.post('/messaging/messages', { recipientId, body, studentId, subject: 'Direct Message' }),
 };
 
 // ─── Game ─────────────────────────────────────────────────────────
@@ -291,11 +333,18 @@ export const gameApi = {
 };
 
 
+
+
 // ─── Timetable / Thời khóa biểu ────────────────────────────────────
 export const scheduleApi = {
-    // Gọi API lấy thời khóa biểu dựa theo classId
-    getSchedulesByClass: (classId: string) => 
+    getSchedulesByClass: (classId: string) =>
         apiClient.get(`/schedules?classId=${classId}&isActive=true&page=1&limit=100`),
+
+    // API lấy thời khóa biểu đã gom nhóm sẵn từ Backend
+    getTimetable: (classId: string, academicYearId: string, semester: string) =>
+        apiClient.get(`/schedules/class/${classId}/timetable`, {
+            params: { academicYearId, semester }
+        }),
 };
 
 // ─── Export default instance ─────────────────────────────────────

@@ -5,27 +5,47 @@ import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-ico
 import { academicApi, studentApi } from '../services/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getCurrentUser } from '../services/userHelper';
+import { useTheme } from '../context/ThemeContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function AcademicListScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [subjects, setSubjects] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false); // Default to false to avoid flicker if cache is fast
     const [refreshing, setRefreshing] = useState(false);
     const [user, setUser] = useState<any>(null);
     const [studentProfile, setStudentProfile] = useState<any>(null);
 
     const loadData = async (isRefreshing = false) => {
-        if (!isRefreshing) setLoading(true);
-        else setRefreshing(true);
+        if (!isRefreshing) {
+            // Instant Load from Cache
+            try {
+                const [cachedUser, cachedProfile, cachedSubjects] = await Promise.all([
+                    AsyncStorage.getItem('user'),
+                    AsyncStorage.getItem('student_profile_cache'),
+                    AsyncStorage.getItem('academic_subjects_cache')
+                ]);
+                if (cachedUser) setUser(JSON.parse(cachedUser));
+                if (cachedProfile) setStudentProfile(JSON.parse(cachedProfile));
+                if (cachedSubjects) {
+                    setSubjects(JSON.parse(cachedSubjects));
+                    setLoading(false); // Stop loading early if we have subjects
+                }
+            } catch (e) {}
+        } else {
+            setRefreshing(true);
+        }
 
         try {
             // 1. Lấy user cơ bản từ session
             const u = await getCurrentUser();
             setUser(u);
 
-            // 2. Lấy profile chi tiết (đã cập nhật kèm Grade ở backend)
+            // 2. Lấy profile chi tiết
             const profileRes = await studentApi.getProfile();
             const profile = profileRes.data?.data || profileRes.data;
             setStudentProfile(profile);
+            if (profile) AsyncStorage.setItem('student_profile_cache', JSON.stringify(profile));
             
             // 3. Lấy danh sách môn học theo khối lớp
             const gradeLevel = profile?.currentClass?.grade?.gradeLevel;
@@ -56,6 +76,7 @@ export default function AcademicListScreen({ navigation }: any) {
             } else {
                 setSubjects(data);
             }
+            AsyncStorage.setItem('academic_subjects_cache', JSON.stringify(data));
         } catch (error) {
             console.error('Error fetching subjects:', error);
         }
@@ -77,12 +98,12 @@ export default function AcademicListScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Góc học tập</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Góc học tập</Text>
                 <View style={{ width: 28 }} />
             </View>
 
@@ -108,13 +129,13 @@ export default function AcademicListScreen({ navigation }: any) {
                 </LinearGradient>
 
                 <View style={styles.sectionHeader}>
-                    <Ionicons name="book-outline" size={20} color="#3498db" />
-                    <Text style={styles.sectionTitle}>
+                    <Ionicons name="book-outline" size={20} color={isDark ? '#60A5FA' : '#3498db'} />
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
                         Môn học (Khối {studentProfile?.currentClass?.grade?.gradeLevel || user?.level || studentProfile?.level || (studentProfile?.currentClass?.name || user?.className)?.charAt(0) || '6'})
                     </Text>
                 </View>
 
-                {loading ? (
+                {loading && subjects.length === 0 ? (
                     <ActivityIndicator size="large" color="#3498db" style={{ marginTop: 50 }} />
                 ) : (
                     <View style={styles.grid}>

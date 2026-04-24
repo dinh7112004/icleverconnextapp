@@ -4,17 +4,22 @@ import {
     TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
+
+import { authApi } from '../services/api';
 
 export default function ChangePasswordScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [loading, setLoading] = useState(false);
     
     const [showOld, setShowOld] = useState(false);
     const [showNew, setShowNew] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const handleUpdate = () => {
+    const handleUpdate = async () => {
         if (!oldPassword || !newPassword || !confirmPassword) {
             Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
             return;
@@ -28,9 +33,23 @@ export default function ChangePasswordScreen({ navigation }: any) {
             return;
         }
 
-        Alert.alert('Thành công', 'Mật khẩu đã được cập nhật', [
-            { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        setLoading(true);
+        try {
+            await authApi.changePassword({
+                oldPassword,
+                newPassword
+            });
+
+            Alert.alert('Thành công', 'Mật khẩu đã được cập nhật', [
+                { text: 'OK', onPress: () => navigation.goBack() }
+            ]);
+        } catch (error: any) {
+            console.error('Change password error:', error);
+            const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại.';
+            Alert.alert('Lỗi', Array.isArray(errorMsg) ? errorMsg.join('\n') : errorMsg);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const renderInput = (
@@ -42,30 +61,30 @@ export default function ChangePasswordScreen({ navigation }: any) {
         placeholder: string
     ) => (
         <View style={styles.inputGroup}>
-            <Text style={styles.label}>{label}</Text>
-            <View style={styles.inputWrapper}>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text>
+            <View style={[styles.inputWrapper, { backgroundColor: isDark ? '#1E293B' : '#f9f9f9', borderColor: theme.border }]}>
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { color: theme.text }]}
                     value={value}
                     onChangeText={setValue}
                     placeholder={placeholder}
-                    placeholderTextColor="#bdc3c7"
+                    placeholderTextColor={theme.textSecondary}
                     secureTextEntry={!show}
                 />
                 <TouchableOpacity onPress={() => setShow(!show)} style={styles.eyeIcon}>
-                    <Ionicons name={show ? "eye-outline" : "eye-off-outline"} size={20} color="#bdc3c7" />
+                    <Ionicons name={show ? "eye-outline" : "eye-off-outline"} size={20} color={theme.textSecondary} />
                 </TouchableOpacity>
             </View>
         </View>
     );
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Đổi mật khẩu</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Đổi mật khẩu</Text>
                 <View style={{ width: 44 }} />
             </View>
 
@@ -74,22 +93,26 @@ export default function ChangePasswordScreen({ navigation }: any) {
                 style={{ flex: 1 }}
             >
                 <ScrollView contentContainerStyle={styles.scrollContent}>
-                    <View style={styles.card}>
-                        <View style={styles.iconCircle}>
-                            <Ionicons name="lock-closed-outline" size={40} color="#2b58de" />
+                    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
+                        <View style={[styles.iconCircle, { backgroundColor: isDark ? '#1e3a8a' : '#f0f4ff' }]}>
+                            <Ionicons name="lock-closed-outline" size={40} color={theme.primary} />
                         </View>
 
                         {renderInput('Mật khẩu hiện tại', oldPassword, setOldPassword, showOld, setShowOld, 'Nhập mật khẩu cũ')}
                         {renderInput('Mật khẩu mới', newPassword, setNewPassword, showNew, setShowNew, 'Nhập mật khẩu mới')}
                         {renderInput('Nhập lại mật khẩu mới', confirmPassword, setConfirmPassword, showConfirm, setShowConfirm, 'Xác nhận mật khẩu mới')}
 
-                        <TouchableOpacity style={styles.updateBtn} onPress={handleUpdate}>
+                        <TouchableOpacity 
+                            style={[styles.updateBtn, { backgroundColor: theme.primary, shadowColor: theme.primary }, loading && { opacity: 0.7 }]} 
+                            onPress={handleUpdate}
+                            disabled={loading}
+                        >
                             <Ionicons name="checkmark-circle-outline" size={22} color="white" style={{ marginRight: 8 }} />
-                            <Text style={styles.updateBtnText}>Cập nhật mật khẩu</Text>
+                            <Text style={styles.updateBtnText}>{loading ? 'Đang xử lý...' : 'Cập nhật mật khẩu'}</Text>
                         </TouchableOpacity>
                     </View>
 
-                    <Text style={styles.footerNote}>
+                    <Text style={[styles.footerNote, { color: theme.textSecondary }]}>
                         Mật khẩu nên bao gồm ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số để đảm bảo an toàn.
                     </Text>
                 </ScrollView>

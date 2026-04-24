@@ -40,73 +40,73 @@ export default function GameListScreen({ navigation }: any) {
                     </View>
                 </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <LinearGradient
-                    colors={['#667eea', '#764ba2']}
-                    style={styles.banner}
-                >
-                    <View style={styles.bannerIconBg}>
-                        <MaterialCommunityIcons name="controller-classic" size={48} color="white" />
-                    </View>
-                    <Text style={styles.bannerTitle}>Đổi điểm lấy niềm vui</Text>
-                    <Text style={styles.bannerSub}>Chơi game giải trí sau những giờ học căng thẳng.</Text>
-                </LinearGradient>
-
-                <Text style={styles.sectionTitle}>Danh sách trò chơi</Text>
-
-                <View style={styles.gameList}>
-                    {/* Vua Toán Học */}
-                    <TouchableOpacity 
-                        style={styles.gameCard}
-                        onPress={() => navigation.navigate('MathRush')}
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    <LinearGradient
+                        colors={['#667eea', '#764ba2']}
+                        style={styles.banner}
                     >
-                        <Image 
-                            source={{ uri: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=400&auto=format&fit=crop' }} 
-                            style={styles.gameImage} 
-                        />
-                        <View style={styles.gameInfo}>
-                            <Text style={styles.gameName}>Vua Toán Học</Text>
-                            <Text style={styles.gameDesc}>Giải các bài toán nhanh trong 60s để nhận quà.</Text>
-                            <View style={styles.costRow}>
-                                <FontAwesome5 name="star" size={12} color="#f1c40f" />
-                                <Text style={styles.costText}>5 xu / lượt</Text>
-                            </View>
+                        <View style={styles.bannerIconBg}>
+                            <MaterialCommunityIcons name="controller-classic" size={48} color="white" />
                         </View>
-                        <TouchableOpacity 
-                            style={styles.playBtn}
+                        <Text style={styles.bannerTitle}>Đổi điểm lấy niềm vui</Text>
+                        <Text style={styles.bannerSub}>Chơi game giải trí sau những giờ học căng thẳng.</Text>
+                    </LinearGradient>
+
+                    <Text style={styles.sectionTitle}>Danh sách trò chơi</Text>
+
+                    <View style={styles.gameList}>
+                        {/* Vua Toán Học */}
+                        <TouchableOpacity
+                            style={styles.gameCard}
                             onPress={() => navigation.navigate('MathRush')}
                         >
-                            <Ionicons name="play" size={18} color="white" />
-                            <Text style={styles.playBtnText}>Chơi</Text>
-                        </TouchableOpacity>
-                    </TouchableOpacity>
-
-                    {/* Dũng Sĩ Tiếng Anh (Sắp ra mắt) */}
-                    <View style={[styles.gameCard, { opacity: 0.8 }]}>
-                        <View style={styles.imageOverlayContainer}>
-                            <Image 
-                                source={{ uri: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=400&auto=format&fit=crop' }} 
-                                style={styles.gameImage} 
+                            <Image
+                                source={{ uri: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=400&auto=format&fit=crop' }}
+                                style={styles.gameImage}
                             />
-                            <View style={styles.comingSoonBadge}>
-                                <Text style={styles.comingSoonText}>SẮP RA MẮT</Text>
+                            <View style={styles.gameInfo}>
+                                <Text style={styles.gameName}>Vua Toán Học</Text>
+                                <Text style={styles.gameDesc}>Giải các bài toán nhanh trong 60s để nhận quà.</Text>
+                                <View style={styles.costRow}>
+                                    <FontAwesome5 name="star" size={12} color="#f1c40f" />
+                                    <Text style={styles.costText}>5 xu / lượt</Text>
+                                </View>
                             </View>
-                        </View>
-                        <View style={styles.gameInfo}>
-                            <Text style={styles.gameName}>Dũng Sĩ Tiếng Anh</Text>
-                            <Text style={styles.gameDesc}>Ghép từ vựng để tiêu diệt quái vật.</Text>
-                            <View style={styles.costRow}>
-                                <FontAwesome5 name="star" size={12} color="#f1c40f" />
-                                <Text style={styles.costText}>10 xu / lượt</Text>
+                            <TouchableOpacity
+                                style={styles.playBtn}
+                                onPress={() => navigation.navigate('MathRush')}
+                            >
+                                <Ionicons name="play" size={18} color="white" />
+                                <Text style={styles.playBtnText}>Chơi</Text>
+                            </TouchableOpacity>
+                        </TouchableOpacity>
+
+                        {/* Dũng Sĩ Tiếng Anh (Sắp ra mắt) */}
+                        <View style={[styles.gameCard, { opacity: 0.8 }]}>
+                            <View style={styles.imageOverlayContainer}>
+                                <Image
+                                    source={{ uri: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=400&auto=format&fit=crop' }}
+                                    style={styles.gameImage}
+                                />
+                                <View style={styles.comingSoonBadge}>
+                                    <Text style={styles.comingSoonText}>SẮP RA MẮT</Text>
+                                </View>
                             </View>
-                        </View>
-                        <View style={[styles.playBtn, { backgroundColor: '#95a5a6' }]}>
-                            <Ionicons name="play" size={18} color="white" />
-                            <Text style={styles.playBtnText}>Chơi</Text>
+                            <View style={styles.gameInfo}>
+                                <Text style={styles.gameName}>Dũng Sĩ Tiếng Anh</Text>
+                                <Text style={styles.gameDesc}>Ghép từ vựng để tiêu diệt quái vật.</Text>
+                                <View style={styles.costRow}>
+                                    <FontAwesome5 name="star" size={12} color="#f1c40f" />
+                                    <Text style={styles.costText}>10 xu / lượt</Text>
+                                </View>
+                            </View>
+                            <View style={[styles.playBtn, { backgroundColor: '#95a5a6' }]}>
+                                <Ionicons name="play" size={18} color="white" />
+                                <Text style={styles.playBtnText}>Chơi</Text>
+                            </View>
                         </View>
                     </View>
-                </View>
-            </ScrollView>
+                </ScrollView>
             </SafeAreaView>
         </LinearGradient>
     );
@@ -114,21 +114,21 @@ export default function GameListScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingHorizontal: 20, 
-        paddingVertical: 15 
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 15
     },
     headerTitle: { fontSize: 20, fontWeight: 'bold', color: 'white' },
-    coinBadge: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        backgroundColor: 'rgba(0,0,0,0.3)', 
-        paddingHorizontal: 12, 
-        paddingVertical: 6, 
-        borderRadius: 20 
+    coinBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20
     },
     coinText: { color: '#f1c40f', fontWeight: 'bold', marginLeft: 6, fontSize: 16 },
     scrollContent: { padding: 20 },
@@ -170,13 +170,13 @@ const styles = StyleSheet.create({
     gameDesc: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 8 },
     costRow: { flexDirection: 'row', alignItems: 'center' },
     costText: { fontSize: 13, color: '#f1c40f', fontWeight: 'bold', marginLeft: 4 },
-    playBtn: { 
-        backgroundColor: '#ff4757', 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        paddingHorizontal: 12, 
-        paddingVertical: 8, 
-        borderRadius: 12 
+    playBtn: {
+        backgroundColor: '#ff4757',
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12
     },
     playBtnText: { color: 'white', fontWeight: 'bold', marginLeft: 4, fontSize: 14 },
     imageOverlayContainer: { position: 'relative' },

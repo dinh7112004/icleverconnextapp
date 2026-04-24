@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, Modal, Animated } from 'react-native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
-import { gameApi } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { gameApi, userApi } from '../services/api';
 import { getCurrentUser } from '../services/userHelper';
+import { useTheme } from '../context/ThemeContext';
 
 export default function MathRushScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [gameState, setGameState] = useState<'loading' | 'playing' | 'result'>('loading');
     const [score, setScore] = useState(0);
     const [timeLeft, setTimeLeft] = useState(60);
@@ -99,8 +102,17 @@ export default function MathRushScreen({ navigation }: any) {
         setSaving(true);
         try {
             const response = await gameApi.finishGame(score, 'math_rush');
-            setGameResult(response.data.data);
+            const resData = response.data.data || response.data;
+            setGameResult(resData);
+            
+            // Sync user profile to update coins outside immediately
+            const profileRes = await userApi.getProfile();
+            const freshUser = profileRes.data.data || profileRes.data;
+            if (freshUser) {
+                await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+            }
         } catch (error) {
+            console.error('Lỗi lưu kết quả:', error);
             Alert.alert('Lỗi', 'Không thể lưu kết quả');
         } finally {
             setSaving(false);
@@ -116,19 +128,19 @@ export default function MathRushScreen({ navigation }: any) {
 
     if (gameState === 'loading') {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#3498db" />
-                <Text style={styles.loadingText}>Đang chuẩn bị phòng thi...</Text>
+            <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang chuẩn bị phòng thi...</Text>
             </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* Header / Timer Bar */}
             <View style={styles.gameHeader}>
-                <Text style={styles.gameTitle}>MATH RUSH</Text>
-                <Text style={styles.scoreText}>{score}</Text>
+                <Text style={[styles.gameTitle, { color: theme.textSecondary }]}>MATH RUSH</Text>
+                <Text style={[styles.scoreText, { color: theme.text }]}>{score}</Text>
                 <View style={styles.progressContainer}>
                     <Animated.View style={[styles.progressBar, { width: progressAnim.interpolate({
                         inputRange: [0, 1],
@@ -140,11 +152,11 @@ export default function MathRushScreen({ navigation }: any) {
             {/* Question Area */}
             <View style={styles.questionContainer}>
                 <View style={styles.timeLeftContainer}>
-                    <Ionicons name="timer-outline" size={20} color="white" />
-                    <Text style={styles.timeLeftText}>{timeLeft}s</Text>
+                    <Ionicons name="timer-outline" size={20} color={theme.textSecondary} />
+                    <Text style={[styles.timeLeftText, { color: theme.textSecondary }]}>{timeLeft}s</Text>
                 </View>
                 
-                <Text style={[styles.formula, { color: feedbackColor }]}>
+                <Text style={[styles.formula, { color: feedbackColor === 'white' ? theme.text : feedbackColor }]}>
                     {questions[currentQuestionIndex]?.formula}
                 </Text>
                 <Text style={styles.equalSign}>= ?</Text>
@@ -155,10 +167,10 @@ export default function MathRushScreen({ navigation }: any) {
                 {options.map((opt, idx) => (
                     <TouchableOpacity 
                         key={idx} 
-                        style={styles.optionBtn}
+                        style={[styles.optionBtn, { backgroundColor: isDark ? '#1E293B' : '#f1f5f9', borderColor: theme.border }]}
                         onPress={() => handleAnswer(opt)}
                     >
-                        <Text style={styles.optionText}>{opt}</Text>
+                        <Text style={[styles.optionText, { color: theme.text }]}>{opt}</Text>
                     </TouchableOpacity>
                 ))}
             </View>
@@ -166,35 +178,41 @@ export default function MathRushScreen({ navigation }: any) {
             {/* Result Modal */}
             <Modal transparent visible={gameState === 'result'} animationType="fade">
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
                         <FontAwesome5 name="trophy" size={80} color="#f1c40f" style={styles.trophyIcon} />
-                        <Text style={styles.modalTitle}>Hết giờ!</Text>
-                        <Text style={styles.modalSub}>Bạn đã làm rất tốt</Text>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>Hết giờ!</Text>
+                        <Text style={[styles.modalSub, { color: theme.textSecondary }]}>Bạn đã làm rất tốt</Text>
 
-                        <View style={styles.resultBox}>
+                        <View style={[styles.resultBox, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border }]}>
                             <View style={styles.resultRow}>
-                                <Text style={styles.resultLabel}>Điểm số</Text>
-                                <Text style={styles.resultValue}>{score}</Text>
+                                <Text style={[styles.resultLabel, { color: theme.textSecondary }]}>Điểm số</Text>
+                                <Text style={[styles.resultValue, { color: theme.text }]}>{score}</Text>
                             </View>
-                            <View style={styles.divider} />
+                            <View style={[styles.divider, { backgroundColor: theme.border }]} />
                             <View style={styles.resultRow}>
-                                <Text style={styles.resultLabel}>Xu nhận được</Text>
+                                <Text style={[styles.resultLabel, { color: theme.textSecondary }]}>Xu nhận được</Text>
                                 <View style={styles.rewardValue}>
-                                    <FontAwesome5 name="star" size={16} color="#f1c40f" style={{ marginRight: 8 }} />
-                                    <Text style={[styles.resultValue, { color: '#f1c40f' }]}>+{gameResult?.addedCoins || 0}</Text>
+                                    {saving ? (
+                                        <ActivityIndicator size="small" color="#f1c40f" />
+                                    ) : (
+                                        <>
+                                            <FontAwesome5 name="star" size={16} color="#f1c40f" style={{ marginRight: 8 }} />
+                                            <Text style={[styles.resultValue, { color: '#f1c40f' }]}>+{gameResult?.addedCoins || 0}</Text>
+                                        </>
+                                    )}
                                 </View>
                             </View>
                         </View>
 
                         <View style={styles.modalBtnRow}>
                             <TouchableOpacity 
-                                style={[styles.modalBtn, { backgroundColor: '#575fcf' }]}
+                                style={[styles.modalBtn, { backgroundColor: isDark ? '#334155' : '#f1f5f9' }]}
                                 onPress={() => navigation.goBack()}
                             >
-                                <Text style={styles.modalBtnText}>Thoát</Text>
+                                <Text style={[styles.modalBtnText, { color: theme.textSecondary }]}>Thoát</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
-                                style={[styles.modalBtn, { backgroundColor: '#ff4757' }]}
+                                style={[styles.modalBtn, { backgroundColor: theme.primary }]}
                                 onPress={() => navigation.goBack()}
                             >
                                 <Text style={styles.modalBtnText}>Nhận thưởng</Text>

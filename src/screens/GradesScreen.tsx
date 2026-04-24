@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { academicApi, schoolsApi } from '../services/api';
 import { getCurrentStudentId, getCurrentSchoolId } from '../services/userHelper';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -23,47 +25,54 @@ interface SubjectReport {
 }
 
 export default function GradesScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [loading, setLoading] = useState(true);
     const [subjects, setSubjects] = useState<SubjectReport[]>([]);
     const [totalGPA, setTotalGPA] = useState(0);
     const [semester, setSemester] = useState('SEMESTER_1');
     const [academicYearName, setAcademicYearName] = useState('');
 
-    useEffect(() => {
-        fetchInitialData();
-    }, []);
 
-    const fetchInitialData = async () => {
+    const loadInitialData = async () => {
+        const cacheKey = `grades_cache_${semester}`;
         try {
-            setLoading(true);
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                const data = JSON.parse(cached);
+                setSubjects(data.subjects || []);
+                setTotalGPA(data.gpa || 0);
+                setAcademicYearName(data.yearName || '');
+                setLoading(false);
+            }
+
             const studentId = await getCurrentStudentId();
             const schoolId = await getCurrentSchoolId();
-            
             if (!studentId || !schoolId) {
-                console.warn('[Grades] Missing studentId or schoolId');
                 setLoading(false);
                 return;
             }
 
-            // 1. Lấy năm học hiện tại
             let academicYearId = '';
+            let yearName = '';
             try {
                 const yearRes = await schoolsApi.getCurrentAcademicYear(schoolId);
                 const yearData = yearRes.data.data;
                 academicYearId = yearData.id;
-                setAcademicYearName(yearData.name);
+                yearName = yearData.name;
+                setAcademicYearName(yearName);
             } catch (err) {
                 console.error('[Grades] Error fetching academic year:', err);
-                // Fallback hoặc báo lỗi
             }
 
             if (academicYearId) {
-                // 2. Lấy báo cáo điểm
                 const reportRes = await academicApi.getGradeReport(studentId, academicYearId, semester);
                 const reportData = reportRes.data.data;
+                const subjectsData = reportData.subjects || [];
+                const gpaData = reportData.gpa || 0;
                 
-                setSubjects(reportData.subjects || []);
-                setTotalGPA(reportData.gpa || 0);
+                setSubjects(subjectsData);
+                setTotalGPA(gpaData);
+                AsyncStorage.setItem(cacheKey, JSON.stringify({ subjects: subjectsData, gpa: gpaData, yearName }));
             }
         } catch (error) {
             console.error('[Grades] Error fetching grades report:', error);
@@ -72,6 +81,10 @@ export default function GradesScreen({ navigation }: any) {
         }
     };
 
+    useEffect(() => {
+        loadInitialData();
+    }, [semester]);
+
     const getRank = (gpa: number) => {
         if (gpa >= 8.0) return { title: 'Học lực: Giỏi', color: '#27ae60', icon: 'trending-up' };
         if (gpa >= 6.5) return { title: 'Học lực: Khá', color: '#f39c12', icon: 'trending-flat' };
@@ -79,24 +92,17 @@ export default function GradesScreen({ navigation }: any) {
         return { title: 'Học lực: Yếu', color: '#e74c3c', icon: 'trending-down' };
     };
 
-    if (loading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#3b5998" />
-            </View>
-        );
-    }
 
     const rank = getRank(totalGPA);
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Kết quả học tập</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Kết quả học tập</Text>
                 <View style={{ width: 40 }} />
             </View>
 
@@ -125,8 +131,8 @@ export default function GradesScreen({ navigation }: any) {
                 </LinearGradient>
 
                 <View style={styles.sectionTitleRow}>
-                    <Ionicons name="book-outline" size={20} color="#3b5998" />
-                    <Text style={styles.sectionTitle}>Bảng điểm chi tiết</Text>
+                    <Ionicons name="book-outline" size={20} color={isDark ? '#60A5FA' : '#3b5998'} />
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Bảng điểm chi tiết</Text>
                 </View>
 
                 {subjects.length === 0 ? (
@@ -141,37 +147,43 @@ export default function GradesScreen({ navigation }: any) {
                         const finalScore = subject.grades.find(g => g.gradeType === 'FINAL');
 
                         return (
-                            <View key={index} style={styles.subjectCard}>
-                                <View style={styles.subjectHeader}>
+                            <View key={index} style={[styles.subjectCard, { backgroundColor: theme.surface }]}>
+                                <View style={[styles.subjectHeader, { borderBottomColor: theme.border }]}>
                                     <View>
-                                        <Text style={styles.subjectName}>{subject.subjectName}</Text>
-                                        <Text style={{ fontSize: 12, color: '#7f8c8d' }}>Học kỳ: {semester === 'SEMESTER_1' ? 'I' : 'II'}</Text>
+                                        <Text style={[styles.subjectName, { color: theme.text }]}>{subject.subjectName}</Text>
+                                        <Text style={{ fontSize: 12, color: theme.textSecondary }}>Học kỳ: {semester === 'SEMESTER_1' ? 'I' : 'II'}</Text>
                                     </View>
                                     <Text style={styles.subjectAvg}>TB: {subject.average.toFixed(1)}</Text>
                                 </View>
 
                                 <View style={styles.scoreRow}>
-                                    <Text style={styles.scoreLabel}>Điểm TX:</Text>
+                                    <View style={styles.labelContainer}>
+                                        <Text style={[styles.scoreLabel, { color: theme.textSecondary }]}>Điểm TX:</Text>
+                                    </View>
                                     <View style={styles.scoreList}>
                                         {regularScores.length > 0 ? regularScores.map((s, i) => (
-                                            <View key={i} style={styles.scoreBubble}>
-                                                <Text style={styles.scoreBubbleText}>{s.score}</Text>
+                                            <View key={i} style={[styles.scoreBubble, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
+                                                <Text style={[styles.scoreBubbleText, { color: theme.text }]}>{Number(s.score || 0).toFixed(1)}</Text>
                                             </View>
-                                        )) : <Text style={{ color: '#ccc' }}>-</Text>}
+                                        )) : <Text style={{ color: theme.textSecondary, marginTop: 4 }}>-</Text>}
                                     </View>
                                 </View>
 
                                 <View style={styles.scoreRow}>
-                                    <Text style={styles.scoreLabel}>Giữa kỳ:</Text>
+                                    <View style={styles.labelContainer}>
+                                        <Text style={[styles.scoreLabel, { color: theme.textSecondary }]}>Giữa kỳ:</Text>
+                                    </View>
                                     <View style={styles.scoreList}>
-                                        <Text style={styles.midtermScore}>{midtermScore ? midtermScore.score : '-'}</Text>
+                                        <Text style={[styles.midtermScore, { color: theme.text }]}>{midtermScore ? Number(midtermScore.score || 0).toFixed(1) : '-'}</Text>
                                     </View>
                                 </View>
 
                                 <View style={styles.scoreRow}>
-                                    <Text style={styles.scoreLabel}>Cuối kỳ:</Text>
+                                    <View style={styles.labelContainer}>
+                                        <Text style={[styles.scoreLabel, { color: theme.textSecondary }]}>Cuối kỳ:</Text>
+                                    </View>
                                     <View style={styles.scoreList}>
-                                        <Text style={styles.finalScore}>{finalScore ? finalScore.score : '-'}</Text>
+                                        <Text style={[styles.finalScore, { color: isDark ? '#60A5FA' : '#2980b9' }]}>{finalScore ? Number(finalScore.score || 0).toFixed(1) : '-'}</Text>
                                     </View>
                                 </View>
                             </View>
@@ -233,22 +245,24 @@ const styles = StyleSheet.create({
     subjectHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#f1f2f6' },
     subjectName: { fontSize: 17, fontWeight: 'bold', color: '#2c3e50' },
     subjectAvg: { fontSize: 15, fontWeight: '700', color: '#27ae60' },
-    scoreRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-    scoreLabel: { fontSize: 14, color: '#7f8c8d', width: 80 },
+    scoreRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+    labelContainer: { height: 32, justifyContent: 'center', width: 80 },
+    scoreLabel: { fontSize: 14, color: '#7f8c8d' },
     scoreList: { flexDirection: 'row', flexWrap: 'wrap', flex: 1, alignItems: 'center' },
     scoreBubble: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
+        minWidth: 36,
+        paddingHorizontal: 8,
+        height: 32,
+        borderRadius: 16,
         backgroundColor: '#f1f2f6',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 8,
-        marginBottom: 5,
+        marginBottom: 8,
     },
     scoreBubbleText: { fontSize: 13, fontWeight: 'bold', color: '#2c3e50' },
-    midtermScore: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50' },
-    finalScore: { fontSize: 16, fontWeight: 'bold', color: '#2980b9' },
+    midtermScore: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50', marginTop: 4 },
+    finalScore: { fontSize: 16, fontWeight: 'bold', color: '#2980b9', marginTop: 4 },
     emptyContainer: { alignItems: 'center', marginTop: 50 },
     emptyText: { color: '#bdc3c7', marginTop: 10, fontSize: 16 }
 });

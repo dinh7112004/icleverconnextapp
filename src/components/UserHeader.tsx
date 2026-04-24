@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useMemo } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuScreen from '../screens/MenuScreen';
 import { userApi, studentApi } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 
 // Hệ thống cấp độ dựa trên điểm
 const LEVELS = [
@@ -34,55 +35,71 @@ function getLevelInfo(points: number) {
 }
 
 interface UserHeaderProps {
-    setIsLoggedIn?: (val: boolean) => void;
     userData?: any;
+    studentInfo?: any;
+    isReady?: boolean;
 }
 
-export default function UserHeader({ setIsLoggedIn, userData: propUserData }: UserHeaderProps) {
+function UserHeader({ userData: propUserData, studentInfo: propStudentData, isReady }: UserHeaderProps) {
+    const { isDark, theme } = useTheme();
     const [isMenuVisible, setMenuVisible] = useState(false);
     const [internalUser, setInternalUser] = useState<any>(null);
     
     // Ưu tiên dùng userData từ Props (HomeScreen truyền xuống), nếu không có thì dùng state nội bộ
     const userData = propUserData || internalUser;
     const [studentData, setStudentData] = useState<any>(null);
-    const [loadingProfile, setLoadingProfile] = useState(true);
+    const [loadingProfile, setLoadingProfile] = useState(false);
     const navigation = useNavigation();
 
     useEffect(() => {
-        setStudentData(null); // Clear stale child data when user changes
-        setLoadingProfile(true); 
-        fetchProfile();
-    }, [propUserData]); // Chạy lại nếu HomeScreen cập nhật propUserData
+        const init = async () => {
+            if (propStudentData) {
+                setStudentData(propStudentData);
+            }
+            
+            // Only fetch if we're missing essential data
+            if (!propUserData || (!propStudentData && !studentData)) {
+                fetchProfile();
+            }
+        };
+        init();
+    }, [propUserData?.id, propStudentData?.id]); // Use IDs for more stable effect trigger
 
     const fetchProfile = async () => {
+        if (loadingProfile) return;
         try {
             setLoadingProfile(true);
             let user = propUserData;
             if (!user) {
-                const response = await userApi.getProfile();
-                user = response.data.data || response.data;
-                setInternalUser(user);
+                // Try cache first
+                const cachedUser = await AsyncStorage.getItem('user');
+                if (cachedUser) {
+                    user = JSON.parse(cachedUser);
+                    setInternalUser(user);
+                } else {
+                    const response = await userApi.getProfile();
+                    user = response.data.data || response.data;
+                    setInternalUser(user);
+                    AsyncStorage.setItem('user', JSON.stringify(user));
+                }
             }
 
-            // Nếu là học sinh hoặc phụ huynh, gọi /students/me để lấy thông tin học sinh
+            // Only fetch student data if it's missing from props
             const roleLower = user?.role?.toLowerCase();
-            if (roleLower === 'student' || roleLower === 'parent') {
+            if ((roleLower === 'student' || roleLower === 'parent') && !propStudentData) {
                 try {
-                    const sRes = await studentApi.getProfile(); // backend đã xử lý trả về đúng con của phụ huynh này
+                    // Try cache first
+                    const cachedStudent = await AsyncStorage.getItem('student_profile');
+                    if (cachedStudent) {
+                        setStudentData(JSON.parse(cachedStudent));
+                    }
+
+                    const sRes = await studentApi.getProfile(); 
                     const sData = sRes.data.data || sRes.data;
                     setStudentData(sData);
+                    AsyncStorage.setItem('student_profile', JSON.stringify(sData));
                 } catch (e) {
-                    console.log('Không lấy được student profile từ /students/me:', e);
-                    
-                    // Fallback
-                    const storedUser = await AsyncStorage.getItem('user');
-                    if (storedUser) {
-                        const parsed = JSON.parse(storedUser);
-                        if (parsed.studentId) {
-                            const sResById = await studentApi.getProfile(parsed.studentId);
-                            setStudentData(sResById.data.data || sResById.data);
-                        }
-                    }
+                    console.log('Không lấy được student profile:', e);
                 }
             }
         } catch (error) {
@@ -93,17 +110,10 @@ export default function UserHeader({ setIsLoggedIn, userData: propUserData }: Us
     };
 
 
-    if (loadingProfile) {
-        return (
-            <View style={[styles.headerBackground, { height: 250, justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator color="white" size="large" />
-            </View>
-        );
-    }
 
     // Tính toán thông tin hiển thị
     const fullName = userData?.fullName || 'Người dùng';
-    const avatarUrl = userData?.avatarUrl || null;
+    const avatarUrl = studentData?.avatarUrl || userData?.avatarUrl || null;
     const role = (userData?.role || '').toLowerCase();
 
     // Thông tin lớp/trường từ dữ liệu học sinh (nếu có)
@@ -116,31 +126,35 @@ export default function UserHeader({ setIsLoggedIn, userData: propUserData }: Us
     const { level, levelName, pointsToNext, progress } = getLevelInfo(points);
 
     return (
-        <View style={styles.headerBackground}>
+        <View style={[styles.headerBackground, { backgroundColor: isDark ? '#0f172a' : '#2b58de' }]}>
             <MenuScreen 
                 isVisible={isMenuVisible} 
                 onClose={() => setMenuVisible(false)} 
-                setIsLoggedIn={setIsLoggedIn}
                 avatarUrl={avatarUrl}
             />
             
             <View style={styles.topNav}>
-                <TouchableOpacity onPress={() => setMenuVisible(true)}>
+                <TouchableOpacity 
+                    onPress={() => setMenuVisible(true)}
+                    style={{ padding: 10, marginLeft: -10 }}
+                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                >
                     <Ionicons name="menu" size={28} color="white" />
                 </TouchableOpacity>
                 <Text style={styles.appName}>iClever Connect</Text>
                 <TouchableOpacity 
-                    style={styles.notificationBtn}
-                    onPress={() => (navigation as any).navigate('MainTabs', { screen: 'Tin tức' })}
+                    style={[styles.notificationBtn, { padding: 10, marginRight: -10 }]}
+                    onPress={() => (navigation as any).navigate('MainTabs', { screen: 'MainNews' })}
+                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                 >
                     <Ionicons name="notifications" size={26} color="white" />
-                    <View style={styles.notificationBadge} />
+                    <View style={[styles.notificationBadge, { borderColor: isDark ? '#0f172a' : '#2b58de', top: 8, right: 8 }]} />
                 </TouchableOpacity>
             </View>
 
             <View style={styles.userInfo}>
                 <View style={styles.avatarContainer}>
-                    <View style={styles.avatarPlaceholder}>
+                    <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1E293B' : '#e1e8ef' }]}>
                         {avatarUrl ? (
                             <Image 
                                 source={{ uri: avatarUrl }} 
@@ -153,7 +167,7 @@ export default function UserHeader({ setIsLoggedIn, userData: propUserData }: Us
                 </View>
                 <View style={styles.userTextContent}>
                     <Text style={styles.userName}>
-                        {loadingProfile ? 'Đang tải...' : (studentData?.fullName || (role === 'student' ? fullName : 'Chưa chọn học sinh'))}
+                        {!isReady ? '...' : (studentData?.fullName || (role === 'student' ? fullName : 'Chưa chọn học sinh'))}
                     </Text>
                     <View style={styles.userSubRow}>
                         {className ? (
@@ -166,11 +180,11 @@ export default function UserHeader({ setIsLoggedIn, userData: propUserData }: Us
                 </View>
             </View>
 
-            <View style={styles.statsCard}>
+            <View style={[styles.statsCard, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.12)', borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.15)' }]}>
                 <View style={styles.statsTopRow}>
                     <View style={styles.levelLeft}>
-                        <View style={styles.medalBox}>
-                            <FontAwesome5 name="medal" size={18} color="#d35400" />
+                        <View style={[styles.medalBox, { backgroundColor: isDark ? '#92400e' : '#f1c40f' }]}>
+                            <FontAwesome5 name="medal" size={18} color={isDark ? '#fbbf24' : '#d35400'} />
                         </View>
                         <View style={{ marginLeft: 10, flex: 1 }}>
                             <Text style={styles.levelLabel}>CẤP ĐỘ {level}</Text>
@@ -205,8 +219,8 @@ export default function UserHeader({ setIsLoggedIn, userData: propUserData }: Us
                 </View>
 
                 <View style={styles.progressSection}>
-                    <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, { width: `${Math.round(progress * 100)}%` }]} />
+                    <View style={[styles.progressBarBg, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.15)' }]}>
+                        <View style={[styles.progressBarFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: isDark ? '#d97706' : '#f39c12' }]} />
                     </View>
                     <Text style={styles.progressText}>Còn {pointsToNext} điểm để lên cấp</Text>
                 </View>
@@ -313,3 +327,5 @@ const styles = StyleSheet.create({
         padding: 10,
     },
 });
+
+export default memo(UserHeader);

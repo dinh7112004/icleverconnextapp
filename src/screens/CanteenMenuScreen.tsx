@@ -3,80 +3,127 @@ import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
     SafeAreaView, ActivityIndicator, Image, Dimensions
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { menuApi } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 export default function CanteenMenuScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [menuData, setMenuData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedIndex, setSelectedIndex] = useState(4); // default: Thứ Sáu (last item)
+    const [selectedDate, setSelectedDate] = useState(new Date()); 
+
+    const loadInitialData = async () => {
+        const cacheKey = 'canteen_menu_cache';
+        try {
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                setMenuData(JSON.parse(cached));
+                setLoading(false);
+            }
+
+            const res = await menuApi.getWeek();
+            const data = res.data?.data || [];
+            setMenuData(data);
+            AsyncStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch (error) {
+            console.error('[Menu] Error:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        menuApi.getWeek().then(res => {
-            setMenuData(res.data.data);
-            setLoading(false);
-        });
+        loadInitialData();
     }, []);
 
+    const formatDate = (date: Date) => {
+        const d = date.getDate().toString().padStart(2, '0');
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}/${m}/${y}`;
+    };
+
+    const formatDateForSearch = (date: Date) => {
+        const d = date.getDate().toString().padStart(2, '0');
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}/${m}/${y}`;
+    };
+
     const goToPrev = () => {
-        if (selectedIndex > 0) setSelectedIndex(i => i - 1);
+        const newDate = new Date(selectedDate);
+        newDate.setDate(selectedDate.getDate() - 1);
+        setSelectedDate(newDate);
+    };
+
+    const isFuture = () => {
+        const futureLimit = new Date();
+        // Limit to current day only, no future dates
+        const current = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+        const limitDate = new Date(futureLimit.getFullYear(), futureLimit.getMonth(), futureLimit.getDate());
+        return current.getTime() >= limitDate.getTime();
     };
 
     const goToNext = () => {
-        if (selectedIndex < menuData.length - 1) setSelectedIndex(i => i + 1);
+        if (isFuture()) return;
+
+        const newDate = new Date(selectedDate);
+        newDate.setDate(selectedDate.getDate() + 1);
+        setSelectedDate(newDate);
     };
 
-    if (loading || menuData.length === 0) {
-        return <View style={styles.center}><ActivityIndicator size="large" color="#3b5998" /></View>;
-    }
+    const getDayName = (date: Date) => {
+        const dayNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+        return dayNames[date.getDay()];
+    };
 
-    const day = menuData[selectedIndex];
+
+    const dateStr = formatDate(selectedDate);
+    const dayData = menuData.find(item => item.date === dateStr);
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Thực đơn</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Thực đơn</Text>
                 <View style={{ width: 40 }} />
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
                 {/* Date Navigator */}
-                <View style={styles.dateNavCard}>
-                    <TouchableOpacity
-                        style={[styles.arrowBtn, selectedIndex === 0 && styles.arrowBtnDisabled]}
-                        onPress={goToPrev}
-                        disabled={selectedIndex === 0}
-                    >
-                        <Ionicons name="chevron-back" size={20} color={selectedIndex === 0 ? '#ccc' : '#3b5998'} />
+                <View style={[styles.dateNavCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
+                    <TouchableOpacity style={styles.arrowBtn} onPress={goToPrev}>
+                        <Ionicons name="chevron-back" size={20} color={theme.primary} />
                     </TouchableOpacity>
 
                     <View style={styles.dateCenter}>
-                        <Text style={styles.dayName}>{day.dayName}</Text>
+                        <Text style={[styles.dayName, { color: theme.textSecondary }]}>{getDayName(selectedDate)}</Text>
                         <View style={styles.dateRow}>
-                            <Ionicons name="calendar-outline" size={16} color="#3b5998" />
-                            <Text style={styles.dateText}>{day.date}</Text>
+                            <Ionicons name="calendar-outline" size={16} color={theme.primary} />
+                            <Text style={[styles.dateText, { color: theme.text }]}>{dateStr}</Text>
                         </View>
                     </View>
 
-                    <TouchableOpacity
-                        style={[styles.arrowBtn, selectedIndex === menuData.length - 1 && styles.arrowBtnDisabled]}
+                    <TouchableOpacity 
+                        style={[styles.arrowBtn, isFuture() && styles.arrowBtnDisabled]} 
                         onPress={goToNext}
-                        disabled={selectedIndex === menuData.length - 1}
+                        disabled={isFuture()}
                     >
-                        <Ionicons name="chevron-forward" size={20} color={selectedIndex === menuData.length - 1 ? '#ccc' : '#3b5998'} />
+                        <Ionicons name="chevron-forward" size={20} color={isFuture() ? (isDark ? '#4A5568' : '#ccc') : theme.primary} />
                     </TouchableOpacity>
                 </View>
 
                 {/* Food Image */}
-                <View style={styles.imageContainer}>
+                <View style={styles.imageContainer} key={dateStr}>
                     <Image
-                        source={{ uri: day.imageUrl }}
+                        source={{ uri: (dayData?.imageUrl && dayData.imageUrl.length > 10) ? dayData.imageUrl : 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000' }}
                         style={styles.foodImage}
                         resizeMode="cover"
                     />
@@ -86,25 +133,31 @@ export default function CanteenMenuScreen({ navigation }: any) {
                 {/* Meal List */}
                 <View style={styles.mealList}>
                     <MealRow
-                        bgColor="#fff3e0"
-                        iconColor="#e97e37"
+                        bgColor={isDark ? '#4338ca' : '#FFF3E0'}
+                        iconColor={isDark ? '#c7d2fe' : '#E67E22'}
                         iconName="cafe-outline"
                         title="Bữa sáng"
-                        description={day.breakfast}
+                        description={(dayData?.breakfast || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
+                        theme={theme}
+                        isDark={isDark}
                     />
                     <MealRow
-                        bgColor="#e8f5e9"
-                        iconColor="#27ae60"
+                        bgColor={isDark ? '#065f46' : '#E8F5E9'}
+                        iconColor={isDark ? '#a7f3d0' : '#27AE60'}
                         iconName="restaurant-outline"
                         title="Bữa trưa"
-                        description={day.lunch}
+                        description={(dayData?.lunch || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
+                        theme={theme}
+                        isDark={isDark}
                     />
                     <MealRow
-                        bgColor="#f3e5f5"
-                        iconColor="#9b59b6"
+                        bgColor={isDark ? '#5b21b6' : '#F3E5F5'}
+                        iconColor={isDark ? '#ddd6fe' : '#9B59B6'}
                         iconName="nutrition-outline"
                         title="Bữa chiều"
-                        description={day.snack}
+                        description={(dayData?.snack || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
+                        theme={theme}
+                        isDark={isDark}
                     />
                 </View>
             </ScrollView>
@@ -112,15 +165,15 @@ export default function CanteenMenuScreen({ navigation }: any) {
     );
 }
 
-function MealRow({ bgColor, iconColor, iconName, title, description }: any) {
+function MealRow({ bgColor, iconColor, iconName, title, description, theme, isDark }: any) {
     return (
-        <View style={styles.mealCard}>
+        <View style={[styles.mealCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
             <View style={[styles.mealIcon, { backgroundColor: bgColor }]}>
                 <Ionicons name={iconName} size={22} color={iconColor} />
             </View>
             <View style={styles.mealInfo}>
-                <Text style={styles.mealTitle}>{title}</Text>
-                <Text style={styles.mealDesc}>{description}</Text>
+                <Text style={[styles.mealTitle, { color: theme.text }]}>{title}</Text>
+                <Text style={[styles.mealDesc, { color: theme.textSecondary }]}>{description}</Text>
             </View>
         </View>
     );

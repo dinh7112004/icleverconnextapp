@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
-    StyleSheet, Text, View, ScrollView, SafeAreaView,
-    TouchableOpacity, ActivityIndicator, TextInput
+    StyleSheet, Text, View, ScrollView,
+    TouchableOpacity, ActivityIndicator, TextInput, Image, Platform, Alert
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { studentApi } from '../services/api';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { studentApi, uploadApi } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function StudentProfileScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
+    const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState(1);
     const [profile, setProfile] = useState<any>(null);
     const [editedProfile, setEditedProfile] = useState<any>(null);
@@ -19,23 +26,38 @@ export default function StudentProfileScreen({ navigation }: any) {
 
     const fetchProfile = async () => {
         try {
+            const cached = await AsyncStorage.getItem('student_profile');
+            let cachedData = null;
+            if (cached) {
+                cachedData = JSON.parse(cached);
+                setProfile(cachedData);
+                setEditedProfile(JSON.parse(JSON.stringify(cachedData)));
+                setLoading(false);
+            }
+
             const response = await studentApi.getProfile();
             const rawData = response.data.data || response.data;
             
-            // Mapping real API flat structure to component's nested structure
+            // Nếu cache có avatar mới hơn (hoặc do vừa upload), ưu tiên dùng cache
+            const finalAvatarUrl = rawData.avatarUrl;
+            
             const mappedProfile = {
                 personal: {
                     fullName: rawData.fullName || rawData.user?.fullName,
-                    class: rawData.currentClass?.name || 'Chưa xếp lớp',
-                    school: rawData.school?.name || 'iClever Connect',
+                    class: rawData.currentClass?.name || '---',
+                    school: rawData.school?.name || '---',
                     studentId: rawData.studentCode,
                     dob: rawData.dateOfBirth ? new Date(rawData.dateOfBirth).toLocaleDateString('vi-VN') : '---',
                     gender: rawData.gender || '---',
+                    idCard: rawData.citizenId || '',
+                    idIssueDate: rawData.citizenIdIssuedAt ? new Date(rawData.citizenIdIssuedAt).toLocaleDateString('vi-VN') : '',
+                    idIssuePlace: rawData.citizenIdIssuedPlace || '',
                     ethnicity: rawData.ethnicity || 'Kinh',
-                    hometown: rawData.birthplace || 'Việt Nam',
+                    hometown: rawData.birthplace || '---',
                     address: rawData.address || 'Chưa cập nhật',
                     phone: rawData.phone || '---',
                     email: rawData.email || '---',
+                    avatarUrl: finalAvatarUrl,
                 },
                 health: {
                     height: rawData.healthInfo?.height?.toString() || '',
@@ -47,22 +69,80 @@ export default function StudentProfileScreen({ navigation }: any) {
                 },
                 contacts: {
                     father: {
-                        name: '---',
-                        phone: '---',
-                        job: '---'
+                        name: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.fullName || '---',
+                        phone: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.phone || '---',
+                        job: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.occupation || '---'
                     },
                     mother: {
-                        name: '---',
-                        phone: '---',
-                        job: '---'
+                        name: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.fullName || '---',
+                        phone: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.phone || '---',
+                        job: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.occupation || '---'
                     }
                 }
             };
+
+            // Tránh ghi đè avatar vừa upload nếu API chưa cập nhật kịp
+            if (cachedData && cachedData.personal?.avatarUrl && !mappedProfile.personal.avatarUrl?.includes(cachedData.personal.avatarUrl)) {
+                 // Giữ lại avatar từ cache nếu nó có timestamp (vừa upload)
+                 if (cachedData.personal.avatarUrl.includes('?t=')) {
+                     mappedProfile.personal.avatarUrl = cachedData.personal.avatarUrl;
+                 }
+            }
             
             setProfile(mappedProfile);
             setEditedProfile(JSON.parse(JSON.stringify(mappedProfile)));
+            AsyncStorage.setItem('student_profile', JSON.stringify(mappedProfile));
         } catch (error) {
             console.error('Error fetching profile:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePickAvatar = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const selectedImage = result.assets[0];
+                setLoading(true);
+
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: Platform.OS === 'ios' ? selectedImage.uri.replace('file://', '') : selectedImage.uri,
+                    type: 'image/jpeg',
+                    name: 'avatar.jpg',
+                } as any);
+
+                const uploadResponse = await uploadApi.post(formData, 'avatars');
+                const newAvatarUrl = `${uploadResponse.data.url}?t=${Date.now()}`;
+                await studentApi.updateProfile({ avatarUrl: uploadResponse.data.url });
+
+                const updatedProfile = {
+                    ...profile,
+                    personal: { ...profile.personal, avatarUrl: newAvatarUrl }
+                };
+                setProfile(updatedProfile);
+                setEditedProfile(JSON.parse(JSON.stringify(updatedProfile)));
+                
+                await AsyncStorage.setItem('student_profile', JSON.stringify(updatedProfile));
+                const storedUser = await AsyncStorage.getItem('user');
+                if (storedUser) {
+                    const userObj = JSON.parse(storedUser);
+                    userObj.avatarUrl = newAvatarUrl;
+                    await AsyncStorage.setItem('user', JSON.stringify(userObj));
+                }
+                
+                Alert.alert(t('common.success'), t('profile.avatarUpdated'));
+            }
+        } catch (error) {
+            console.error('Error picking avatar:', error);
+            Alert.alert(t('common.error'), t('profile.avatarUpdateFailed'));
         } finally {
             setLoading(false);
         }
@@ -80,85 +160,54 @@ export default function StudentProfileScreen({ navigation }: any) {
         });
     };
 
-    const handleSave = () => {
-        setProfile(JSON.parse(JSON.stringify(editedProfile)));
+    const handleSave = async () => {
+        const newProfile = JSON.parse(JSON.stringify(editedProfile));
+        setProfile(newProfile);
         setIsEditing(false);
-    };
 
-    const toggleEdit = () => {
-        if (!isEditing) {
-            setEditedProfile(JSON.parse(JSON.stringify(profile)));
+        try {
+            let genderValue = editedProfile.personal.gender;
+            if (genderValue === 'Nam' || genderValue === 'male') genderValue = 'male';
+            else if (genderValue === 'Nữ' || genderValue === 'female') genderValue = 'female';
+            else if (genderValue === 'Khác') genderValue = 'other';
+
+            const apiData: any = {
+                fullName: editedProfile.personal.fullName,
+                gender: genderValue,
+                ethnicity: editedProfile.personal.ethnicity,
+                birthplace: editedProfile.personal.hometown,
+                address: editedProfile.personal.address,
+                citizenId: editedProfile.personal.idCard,
+                citizenIdIssuedPlace: editedProfile.personal.idIssuePlace,
+                healthInfo: {
+                    height: parseFloat(editedProfile.health.height) || undefined,
+                    weight: parseFloat(editedProfile.health.weight) || undefined,
+                    bloodType: editedProfile.health.bloodType,
+                    vision: editedProfile.health.vision,
+                    insuranceId: editedProfile.health.insuranceId,
+                    importantNote: editedProfile.health.importantNote,
+                }
+            };
+
+            await studentApi.updateProfile(apiData);
+            AsyncStorage.setItem('student_profile', JSON.stringify(newProfile));
+        } catch (error: any) {
+            console.error('Error saving profile:', error);
+            Alert.alert(t('common.error'), t('profile.syncFailed'));
         }
-        setIsEditing(!isEditing);
     };
 
-    const renderHeader = () => (
-        <View style={styles.header}>
-            <View style={styles.topBar}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="chevron-back" size={28} color="white" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Hồ sơ học sinh</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {isEditing ? (
-                        <TouchableOpacity style={styles.saveBtnWhite} onPress={handleSave}>
-                            <Ionicons name="save-outline" size={16} color="#2b58de" style={{ marginRight: 5 }} />
-                            <Text style={styles.saveBtnTextBlue}>Lưu</Text>
-                        </TouchableOpacity>
-                    ) : (
-                        <TouchableOpacity style={styles.editBtn} onPress={toggleEdit}>
-                            <Ionicons name="pencil" size={20} color="white" />
-                        </TouchableOpacity>
-                    )}
-                </View>
-            </View>
+    const formatGender = (gender: string) => {
+        if (!gender) return '---';
+        if (gender.toLowerCase() === 'male' || gender === 'Nam') return 'Nam';
+        if (gender.toLowerCase() === 'female' || gender === 'Nữ') return 'Nữ';
+        return gender;
+    };
 
-            <View style={styles.avatarSection}>
-                <View style={styles.avatarContainer}>
-                    <View style={styles.avatarCircle}>
-                        <Text style={{ fontSize: 48 }}>👨🏽‍🦲</Text>
-                    </View>
-                    {!isEditing && (
-                        <TouchableOpacity style={styles.cameraBtn}>
-                            <Ionicons name="camera" size={16} color="#3b5998" />
-                        </TouchableOpacity>
-                    )}
-                </View>
-                <Text style={styles.profileName}>{profile?.personal?.fullName}</Text>
-                <Text style={styles.profileSubText}>
-                    Lớp {profile?.personal?.class || '7A1'} • Trường {profile?.personal?.school || 'THCS Ngôi Sao'}
-                </Text>
-            </View>
-
-            <View style={styles.tabBar}>
-                <TouchableOpacity
-                    style={[styles.tabItem, activeTab === 1 && styles.activeTabItem]}
-                    onPress={() => setActiveTab(1)}
-                >
-                    <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>Thông tin</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.tabItem, activeTab === 2 && styles.activeTabItem]}
-                    onPress={() => setActiveTab(2)}
-                >
-                    <Text style={[styles.tabText, activeTab === 2 && styles.activeTabText]}>Sức khỏe</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.tabItem, activeTab === 3 && styles.activeTabItem]}
-                    onPress={() => setActiveTab(3)}
-                >
-                    <Text style={[styles.tabText, activeTab === 3 && styles.activeTabText]}>Liên hệ</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-
-    const renderLabel = (label: string) => <Text style={styles.inputLabel}>{label}</Text>;
-
-    const renderValueRow = (label: string, value: string, isLight = false) => (
-        <View style={styles.viewRow}>
-            <Text style={styles.viewLabel}>{label}</Text>
-            <Text style={[styles.viewValue, isLight && styles.viewValueLight]}>{value || 'Chưa cập nhật'}</Text>
+    const renderValueBox = (label: string, value: string, half = false) => (
+        <View style={[styles.valueBox, half && { flex: 1 }]}>
+            <Text style={[styles.fieldLabel, { color: theme.textSecondary, fontSize: 13, marginBottom: 8 }]}>{label}</Text>
+            <Text style={[styles.valueText, { color: theme.text, fontSize: 16, fontWeight: '700' }]}>{value || '---'}</Text>
         </View>
     );
 
@@ -169,9 +218,9 @@ export default function StudentProfileScreen({ navigation }: any) {
 
         return (
             <View style={[styles.inputGroup, half && { flex: 1, marginHorizontal: 4 }]}>
-                <Text style={styles.fieldLabel}>{label}</Text>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{label}</Text>
                 <TextInput
-                    style={styles.boundingBox}
+                    style={[styles.inputField, { backgroundColor: isDark ? '#1e293b' : '#f1f4f9', color: theme.text }]}
                     value={value}
                     onChangeText={(val) => handleUpdateField(section, field, val, subSection)}
                 />
@@ -181,18 +230,14 @@ export default function StudentProfileScreen({ navigation }: any) {
 
     const renderPersonalInfo = () => (
         <View style={styles.tabContent}>
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <View style={styles.cardHeader}>
-                    <Ionicons name="person-outline" size={18} color="#3b5998" />
-                    <Text style={styles.cardTitle}>Thông tin cá nhân</Text>
+                    <Ionicons name="person-outline" size={18} color="#3b82f6" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Thông tin cá nhân</Text>
                 </View>
 
                 {isEditing ? (
                     <>
-                        <View style={styles.viewRow}>
-                            <Text style={styles.viewLabel}>Mã học sinh</Text>
-                            <Text style={styles.viewValue}>{profile?.personal?.studentId}</Text>
-                        </View>
                         {renderInputBox('Họ và tên', 'personal', 'fullName')}
                         <View style={styles.row}>
                             {renderInputBox('Ngày sinh', 'personal', 'dob', true)}
@@ -201,18 +246,19 @@ export default function StudentProfileScreen({ navigation }: any) {
                     </>
                 ) : (
                     <>
-                        {renderValueRow('Mã học sinh', profile?.personal?.studentId)}
-                        {renderValueRow('Họ và tên', profile?.personal?.fullName)}
-                        {renderValueRow('Ngày sinh', profile?.personal?.dob)}
-                        {renderValueRow('Giới tính', profile?.personal?.gender)}
+                        {renderValueBox('Họ và tên', profile?.personal?.fullName)}
+                        <View style={styles.row}>
+                            {renderValueBox('Ngày sinh', profile?.personal?.dob, true)}
+                            {renderValueBox('Giới tính', formatGender(profile?.personal?.gender), true)}
+                        </View>
                     </>
                 )}
             </View>
 
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <View style={styles.cardHeader}>
-                    <Ionicons name="card-outline" size={18} color="#3b5998" />
-                    <Text style={styles.cardTitle}>Định danh & Quê quán</Text>
+                    <Ionicons name="card-outline" size={18} color="#3b82f6" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Định danh & Quê quán</Text>
                 </View>
                 {isEditing ? (
                     <>
@@ -226,30 +272,32 @@ export default function StudentProfileScreen({ navigation }: any) {
                     </>
                 ) : (
                     <>
-                        {renderValueRow('Số CCCD', profile?.personal?.idCard, true)}
-                        {renderValueRow('Ngày cấp', profile?.personal?.idIssueDate, true)}
-                        {renderValueRow('Nơi cấp', profile?.personal?.idIssuePlace, true)}
-                        {renderValueRow('Dân tộc', profile?.personal?.ethnicity)}
-                        {renderValueRow('Quê quán', profile?.personal?.hometown, true)}
+                        {renderValueBox('Số CCCD/Mã định danh', profile?.personal?.idCard)}
+                        <View style={styles.row}>
+                            {renderValueBox('Ngày cấp', profile?.personal?.idIssueDate, true)}
+                            {renderValueBox('Nơi cấp', profile?.personal?.idIssuePlace, true)}
+                        </View>
+                        {renderValueBox('Dân tộc', profile?.personal?.ethnicity)}
+                        {renderValueBox('Quê quán', profile?.personal?.hometown)}
                     </>
                 )}
             </View>
 
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <View style={styles.cardHeader}>
-                    <Ionicons name="location-outline" size={18} color="#3b5998" />
-                    <Text style={styles.cardTitle}>Liên lạc</Text>
+                    <Ionicons name="location-outline" size={18} color="#f97316" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Liên lạc</Text>
                 </View>
-                <Text style={styles.fieldLabel}>Địa chỉ thường trú</Text>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginBottom: 8 }]}>Địa chỉ thường trú</Text>
                 {isEditing ? (
                     <TextInput
-                        style={[styles.boundingBox, { minHeight: 60, textAlignVertical: 'top', marginTop: 8 }]}
+                        style={[styles.inputField, { minHeight: 60, textAlignVertical: 'top', backgroundColor: isDark ? '#1e293b' : '#f1f4f9', color: theme.text }]}
                         value={editedProfile?.personal?.address}
                         onChangeText={(val) => handleUpdateField('personal', 'address', val)}
                         multiline
                     />
                 ) : (
-                    <Text style={styles.addressText}>{profile?.personal?.address}</Text>
+                    <Text style={[styles.addressText, { color: theme.text, fontSize: 16, fontWeight: '700' }]}>{profile?.personal?.address}</Text>
                 )}
             </View>
         </View>
@@ -257,112 +305,142 @@ export default function StudentProfileScreen({ navigation }: any) {
 
     const renderHealthInfo = () => (
         <View style={styles.tabContent}>
-            <View style={styles.healthStatsRow}>
-                <View style={styles.healthStatCard}>
-                    <MaterialCommunityIcons name="ruler" size={24} color="#3b5998" />
-                    <Text style={styles.healthStatLabel}>Chiều cao (cm)</Text>
-                    {isEditing ? (
-                        <TextInput
-                            style={styles.boundingBoxSmall}
-                            value={editedProfile?.health?.height}
-                            onChangeText={(val) => handleUpdateField('health', 'height', val)}
-                        />
-                    ) : (
-                        <Text style={styles.healthStatValue}>{profile?.health?.height || 'cm'}</Text>
-                    )}
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                <View style={styles.cardHeader}>
+                    <Ionicons name="heart" size={18} color="#f43f5e" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Chi số cơ thể</Text>
                 </View>
-                <View style={styles.healthStatCard}>
-                    <MaterialCommunityIcons name="weight-kilogram" size={24} color="#e67e22" />
-                    <Text style={styles.healthStatLabel}>Cân nặng (kg)</Text>
-                    {isEditing ? (
-                        <TextInput
-                            style={styles.boundingBoxSmall}
-                            value={editedProfile?.health?.weight}
-                            onChangeText={(val) => handleUpdateField('health', 'weight', val)}
-                        />
-                    ) : (
-                        <Text style={styles.healthStatValue}>{profile?.health?.weight || 'kg'}</Text>
-                    )}
+                
+                <View style={styles.healthGrid}>
+                    <View style={styles.healthGridItem}>
+                        <View style={[styles.healthCardInner, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+                            <Ionicons name="link-outline" size={24} color="#3b82f6" style={styles.healthIcon} />
+                            <Text style={[styles.healthLabel, { color: theme.textSecondary }]}>Chiều cao (cm)</Text>
+                            <TextInput 
+                                style={[styles.healthInput, { color: theme.text, backgroundColor: isDark ? '#0f172a' : 'white', borderColor: isDark ? '#334155' : '#e2e8f0' }]}
+                                value={isEditing ? editedProfile?.health?.height : profile?.health?.height}
+                                editable={isEditing}
+                                onChangeText={(val) => handleUpdateField('health', 'height', val)}
+                                placeholder="---"
+                                placeholderTextColor={theme.textSecondary}
+                            />
+                        </View>
+                    </View>
+                    <View style={styles.healthGridItem}>
+                        <View style={[styles.healthCardInner, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+                            <Ionicons name="briefcase-outline" size={24} color="#f97316" style={styles.healthIcon} />
+                            <Text style={[styles.healthLabel, { color: theme.textSecondary }]}>Cân nặng (kg)</Text>
+                            <TextInput 
+                                style={[styles.healthInput, { color: theme.text, backgroundColor: isDark ? '#0f172a' : 'white', borderColor: isDark ? '#334155' : '#e2e8f0' }]}
+                                value={isEditing ? editedProfile?.health?.weight : profile?.health?.weight}
+                                editable={isEditing}
+                                onChangeText={(val) => handleUpdateField('health', 'weight', val)}
+                                placeholder="---"
+                                placeholderTextColor={theme.textSecondary}
+                            />
+                        </View>
+                    </View>
                 </View>
             </View>
 
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <View style={styles.cardHeader}>
-                    <Ionicons name="heart-outline" size={18} color="#e74c3c" />
-                    <Text style={styles.cardTitle}>Thông tin y tế</Text>
+                    <Ionicons name="medical-outline" size={18} color="#f43f5e" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Thông tin y tế</Text>
                 </View>
-                {isEditing ? (
-                    <>
-                        <View style={styles.row}>
-                            {renderInputBox('Nhóm máu', 'health', 'bloodType', true)}
-                            {renderInputBox('Thị lực', 'health', 'vision', true)}
-                        </View>
-                        {renderInputBox('Mã BHYT', 'health', 'insuranceId')}
-                        <View style={styles.importantNote}>
-                            <Text style={styles.noteLabel}>LƯU Ý QUAN TRỌNG</Text>
-                            <TextInput
-                                style={styles.noteInput}
-                                value={editedProfile?.health?.importantNote}
-                                onChangeText={(val) => handleUpdateField('health', 'importantNote', val)}
-                                multiline
-                            />
-                        </View>
-                    </>
-                ) : (
-                    <>
-                        {renderValueRow('Nhóm máu', profile?.health?.bloodType, true)}
-                        {renderValueRow('Thị lực', profile?.health?.vision)}
-                        {renderValueRow('Mã BHYT', profile?.health?.insuranceId, true)}
+                
+                <View style={styles.row}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Nhóm máu</Text>
+                        <TextInput 
+                            style={[styles.inputField, { backgroundColor: isDark ? '#1e293b' : '#f1f4f9', color: theme.text }]}
+                            value={isEditing ? editedProfile?.health?.bloodType : profile?.health?.bloodType}
+                            editable={isEditing}
+                            onChangeText={(val) => handleUpdateField('health', 'bloodType', val)}
+                            placeholder="---"
+                            placeholderTextColor={theme.textSecondary}
+                        />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Thị lực</Text>
+                        <TextInput 
+                            style={[styles.inputField, { backgroundColor: isDark ? '#1e293b' : '#f1f4f9', color: theme.text }]}
+                            value={isEditing ? editedProfile?.health?.vision : profile?.health?.vision}
+                            editable={isEditing}
+                            onChangeText={(val) => handleUpdateField('health', 'vision', val)}
+                            placeholder="---"
+                            placeholderTextColor={theme.textSecondary}
+                        />
+                    </View>
+                </View>
 
-                        <View style={styles.importantNote}>
-                            <Text style={styles.noteLabel}>LƯU Ý QUAN TRỌNG</Text>
-                            <Text style={styles.noteContent}>{profile?.health?.importantNote}</Text>
-                        </View>
-                        {renderValueRow('Khám sức khỏe', profile?.health?.lastCheckup)}
-                    </>
-                )}
+                <View style={[styles.inputGroup, { marginTop: 15 }]}>
+                    <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Mã BHYT</Text>
+                    <TextInput 
+                        style={[styles.inputField, { backgroundColor: isDark ? '#1e293b' : '#f1f4f9', color: theme.text }]}
+                        value={isEditing ? editedProfile?.health?.insuranceId : profile?.health?.insuranceId}
+                        editable={isEditing}
+                        onChangeText={(val) => handleUpdateField('health', 'insuranceId', val)}
+                        placeholder="---"
+                        placeholderTextColor={theme.textSecondary}
+                    />
+                </View>
+
+                <View style={[styles.importantNoteBox, { backgroundColor: isDark ? '#451a1a' : '#fff1f2' }]}>
+                    <Text style={styles.noteTitle}>LƯU Ý QUAN TRỌNG</Text>
+                    {isEditing ? (
+                        <TextInput 
+                            style={[styles.noteInput, { color: theme.text }]}
+                            value={editedProfile?.health?.importantNote}
+                            onChangeText={(val) => handleUpdateField('health', 'importantNote', val)}
+                            multiline
+                        />
+                    ) : (
+                        <Text style={[styles.noteContent, { color: theme.text }]}>{profile?.health?.importantNote || 'Không có lưu ý đặc biệt'}</Text>
+                    )}
+                </View>
             </View>
         </View>
     );
 
     const renderContactInfo = () => (
         <View style={styles.tabContent}>
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <View style={styles.cardHeader}>
-                    <Ionicons name="people-outline" size={18} color="#3b5998" />
-                    <Text style={styles.cardTitle}>Thông tin bố</Text>
+                    <Ionicons name="people-outline" size={18} color="#3b82f6" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Thông tin bố</Text>
                 </View>
                 {isEditing ? (
                     <>
                         {renderInputBox('Họ và tên', 'contacts', 'name', false, 'father')}
                         {renderInputBox('Điện thoại', 'contacts', 'phone', false, 'father')}
-                        <View style={styles.viewRow}><Text style={styles.viewLabel}>Nghề nghiệp</Text><Text style={styles.viewValue}>{profile?.contacts?.father?.job}</Text></View>
+                        {renderInputBox('Nghề nghiệp', 'contacts', 'job', false, 'father')}
                     </>
                 ) : (
                     <>
-                        {renderValueRow('Họ và tên', profile?.contacts?.father?.name)}
-                        {renderValueRow('Điện thoại', profile?.contacts?.father?.phone)}
-                        {renderValueRow('Nghề nghiệp', profile?.contacts?.father?.job)}
+                        {renderValueBox('Họ và tên', profile?.contacts?.father?.name)}
+                        {renderValueBox('Điện thoại', profile?.contacts?.father?.phone)}
+                        {renderValueBox('Nghề nghiệp', profile?.contacts?.father?.job)}
                     </>
                 )}
             </View>
 
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <View style={styles.cardHeader}>
-                    <Ionicons name="people-outline" size={18} color="#e84393" />
-                    <Text style={styles.cardTitle}>Thông tin mẹ</Text>
+                    <Ionicons name="people-outline" size={18} color="#db2777" style={{ marginRight: 10 }} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Thông tin mẹ</Text>
                 </View>
                 {isEditing ? (
                     <>
                         {renderInputBox('Họ và tên', 'contacts', 'name', false, 'mother')}
                         {renderInputBox('Điện thoại', 'contacts', 'phone', false, 'mother')}
-                        <View style={styles.viewRow}><Text style={styles.viewLabel}>Nghề nghiệp</Text><Text style={styles.viewValue}>{profile?.contacts?.mother?.job}</Text></View>
+                        {renderInputBox('Nghề nghiệp', 'contacts', 'job', false, 'mother')}
                     </>
                 ) : (
                     <>
-                        {renderValueRow('Họ và tên', profile?.contacts?.mother?.name)}
-                        {renderValueRow('Điện thoại', profile?.contacts?.mother?.phone)}
-                        {renderValueRow('Nghề nghiệp', profile?.contacts?.mother?.job)}
+                        {renderValueBox('Họ và tên', profile?.contacts?.mother?.name)}
+                        {renderValueBox('Điện thoại', profile?.contacts?.mother?.phone)}
+                        {renderValueBox('Nghề nghiệp', profile?.contacts?.mother?.job)}
                     </>
                 )}
             </View>
@@ -370,183 +448,320 @@ export default function StudentProfileScreen({ navigation }: any) {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { backgroundColor: isDark ? '#0f172a' : '#f8f9fa' }]}>
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#3b5998" />
+                    <ActivityIndicator size="large" color={theme.primary} />
                 </View>
             ) : (
                 <View style={{ flex: 1 }}>
-                    {renderHeader()}
-                    <ScrollView
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={{ paddingBottom: 50, paddingTop: 10 }}
-                    >
+                    <View style={[styles.header, { backgroundColor: isDark ? '#1e293b' : '#1d57e8' }]}>
+                        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+                            <View style={styles.topNav}>
+                                <TouchableOpacity 
+                                    onPress={() => navigation.goBack()} 
+                                    style={[styles.backBtn, { padding: 10, marginLeft: -10 }]}
+                                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                                >
+                                    <Ionicons name="chevron-back" size={28} color="white" />
+                                </TouchableOpacity>
+                                <Text style={styles.headerTitle}>Hồ sơ học sinh</Text>
+                                {isEditing ? (
+                                    <TouchableOpacity 
+                                        onPress={handleSave} 
+                                        style={[styles.saveBtn, { backgroundColor: 'white' }]}
+                                    >
+                                        <Feather name="save" size={16} color="#1d57e8" style={{ marginRight: 5 }} />
+                                        <Text style={[styles.saveBtnText, { color: '#1d57e8' }]}>Lưu</Text>
+                                    </TouchableOpacity>
+                                ) : (
+                                    <TouchableOpacity 
+                                        onPress={() => setIsEditing(true)} 
+                                        style={[styles.editBtnCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)' }]}
+                                    >
+                                        <Feather name="edit" size={18} color="white" />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            <View style={styles.userInfo}>
+                                <View style={styles.avatarWrapper}>
+                                    <View style={styles.avatarCircle}>
+                                        {profile?.personal?.avatarUrl ? (
+                                            <Image source={{ uri: profile.personal.avatarUrl }} style={styles.avatarImage} />
+                                        ) : (
+                                            <Text style={{ fontSize: 50 }}>🧑‍🎓</Text>
+                                        )}
+                                    </View>
+                                    <TouchableOpacity style={styles.cameraBtn} onPress={handlePickAvatar}>
+                                        <Ionicons name="camera" size={18} color="#1d57e8" />
+                                    </TouchableOpacity>
+                                </View>
+                                <Text style={styles.userNameText}>{profile?.personal?.fullName}</Text>
+                                <Text style={styles.userSubText}>
+                                    Lớp {profile?.personal?.class || '---'} • Trường {profile?.personal?.school || '---'}
+                                </Text>
+                            </View>
+                        </SafeAreaView>
+                    </View>
+
+                    <View style={styles.tabBarWrapper}>
+                        <View style={[styles.tabBar, { backgroundColor: isDark ? '#1e293b' : 'white' }]}>
+                            <TouchableOpacity
+                                style={[styles.tabItem, activeTab === 1 && styles.activeTab]}
+                                onPress={() => setActiveTab(1)}
+                            >
+                                <Text style={[styles.tabText, activeTab === 1 ? styles.activeTabText : { color: theme.textSecondary }]}>Thông tin</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.tabItem, activeTab === 2 && styles.activeTab]}
+                                onPress={() => setActiveTab(2)}
+                            >
+                                <Text style={[styles.tabText, activeTab === 2 ? styles.activeTabText : { color: theme.textSecondary }]}>Sức khỏe</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.tabItem, activeTab === 3 && styles.activeTab]}
+                                onPress={() => setActiveTab(3)}
+                            >
+                                <Text style={[styles.tabText, activeTab === 3 ? styles.activeTabText : { color: theme.textSecondary }]}>Liên hệ</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
                         {activeTab === 1 && renderPersonalInfo()}
                         {activeTab === 2 && renderHealthInfo()}
                         {activeTab === 3 && renderContactInfo()}
                     </ScrollView>
                 </View>
             )}
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f5f7fa' },
+    container: { flex: 1 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
-        backgroundColor: '#2b58de',
-        paddingTop: 10,
         paddingBottom: 40,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30
+        borderBottomLeftRadius: 40,
+        borderBottomRightRadius: 40,
     },
-    topBar: {
+    headerSafe: {
+        paddingHorizontal: 16,
+    },
+    topNav: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16
+        justifyContent: 'space-between',
+        height: 60,
     },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: 'white' },
-    editBtn: {
+    backBtn: { 
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: 'white',
+        flex: 1,
+        marginLeft: 15,
+    },
+    editBtnCircle: {
         width: 36,
         height: 36,
-        backgroundColor: 'rgba(255,255,255,0.2)',
         borderRadius: 18,
         justifyContent: 'center',
-        alignItems: 'center'
+        alignItems: 'center',
     },
-    saveBtnWhite: {
+    saveBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'white',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
         borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#2b58de'
+        elevation: 2,
     },
-    saveBtnTextBlue: { color: '#2b58de', fontWeight: 'bold', fontSize: 13 },
-    avatarSection: { alignItems: 'center', marginTop: 10 },
-    avatarContainer: { position: 'relative' },
+    saveBtnText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    userInfo: {
+        alignItems: 'center',
+        marginTop: 10,
+    },
+    avatarWrapper: {
+        position: 'relative',
+    },
     avatarCircle: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
+        width: 110,
+        height: 110,
+        borderRadius: 55,
         backgroundColor: '#e1e8ef',
+        borderWidth: 4,
+        borderColor: 'rgba(255,255,255,0.4)',
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 3,
-        borderColor: 'white'
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
     },
     cameraBtn: {
         position: 'absolute',
-        bottom: 0,
-        right: 0,
+        bottom: 5,
+        right: 5,
         backgroundColor: 'white',
-        padding: 6,
-        borderRadius: 15,
-        elevation: 2
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
     },
-    profileName: { fontSize: 22, fontWeight: 'bold', color: 'white', marginTop: 15 },
-    profileSubText: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
-
+    userNameText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: 'white',
+        marginTop: 15,
+    },
+    userSubText: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.9)',
+        marginTop: 5,
+    },
+    tabBarWrapper: {
+        marginTop: -25,
+        paddingHorizontal: 20,
+        marginBottom: 15,
+    },
     tabBar: {
         flexDirection: 'row',
-        backgroundColor: 'white',
-        marginHorizontal: 16,
-        marginTop: 25,
-        borderRadius: 18,
+        borderRadius: 15,
         padding: 5,
-        elevation: 3
+        elevation: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
     },
-    tabItem: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 15 },
-    activeTabItem: { backgroundColor: '#2b58de' },
-    tabText: { fontSize: 14, fontWeight: '600', color: '#7f8c8d' },
-    activeTabText: { color: 'white' },
-
-    tabContent: { paddingHorizontal: 16, marginTop: 10 },
+    tabItem: {
+        flex: 1,
+        paddingVertical: 12,
+        alignItems: 'center',
+        borderRadius: 12,
+    },
+    activeTab: {
+        backgroundColor: '#3b82f6',
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    activeTabText: {
+        color: 'white',
+    },
+    tabContent: {
+        paddingHorizontal: 16,
+        paddingTop: 10,
+    },
     card: {
-        backgroundColor: 'white',
         borderRadius: 20,
         padding: 20,
         marginBottom: 16,
-        elevation: 2
+        elevation: 1,
     },
-    cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50', marginLeft: 10 },
-
-    viewRow: {
+    cardHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f1f2f6'
+        marginBottom: 20,
     },
-    viewLabel: { fontSize: 14, color: '#7f8c8d' },
-    viewValue: { fontSize: 15, color: '#2c3e50', fontWeight: 'bold', textAlign: 'right' },
-    viewValueLight: { color: '#bdc3c7', fontWeight: '500' },
-
-    row: { flexDirection: 'row', marginHorizontal: -4 },
-    inputGroup: { marginBottom: 15 },
-    fieldLabel: { fontSize: 13, color: '#7f8c8d', marginBottom: 8 },
-    inputLabel: { fontSize: 13, color: '#7f8c8d', marginBottom: 8 },
-    boundingBox: {
-        backgroundColor: 'white',
-        borderWidth: 1,
-        borderColor: '#dcdde1',
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 15,
-        color: '#2c3e50',
-        fontWeight: '500'
-    },
-    boundingBoxSmall: {
-        backgroundColor: '#f8f9fa',
-        borderWidth: 1,
-        borderColor: '#dcdde1',
-        borderRadius: 8,
-        width: '100%',
-        paddingVertical: 6,
-        textAlign: 'center',
+    cardTitle: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#2b58de',
-        marginTop: 5
     },
-
-    healthStatsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-    healthStatCard: {
+    valueBox: {
+        marginBottom: 20,
+    },
+    valueText: {
+        lineHeight: 22,
+    },
+    row: {
+        flexDirection: 'row',
+    },
+    inputGroup: {
+        marginBottom: 15,
+    },
+    fieldLabel: {
+        fontSize: 13,
+        marginBottom: 8,
+    },
+    inputField: {
+        borderRadius: 12,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        fontSize: 15,
+        fontWeight: '500',
+    },
+    addressText: {
+        lineHeight: 22,
+    },
+    healthGrid: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    healthGridItem: {
         flex: 1,
-        backgroundColor: 'white',
-        borderRadius: 20,
-        padding: 16,
-        alignItems: 'center',
-        marginHorizontal: 5,
-        elevation: 2
+        marginHorizontal: 4,
     },
-    healthStatLabel: { fontSize: 12, color: '#7f8c8d', marginTop: 10, marginBottom: 5 },
-    healthStatValue: { fontSize: 20, fontWeight: 'bold', color: '#2c3e50' },
-
-    importantNote: {
-        backgroundColor: '#fff5f5',
+    healthCardInner: {
         padding: 15,
         borderRadius: 15,
-        marginVertical: 15,
-        borderWidth: 1,
-        borderColor: '#ffe8e8'
+        alignItems: 'center',
     },
-    noteLabel: { fontSize: 11, fontWeight: 'bold', color: '#e74c3c', marginBottom: 10 },
-    noteContent: { fontSize: 14, color: '#2c3e50', fontWeight: '500', lineHeight: 22 },
+    healthIcon: {
+        marginBottom: 10,
+    },
+    healthLabel: {
+        fontSize: 12,
+        marginBottom: 5,
+    },
+    healthInput: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        borderWidth: 1,
+        borderRadius: 8,
+        width: '100%',
+        textAlign: 'center',
+        paddingVertical: 5,
+    },
+    importantNoteBox: {
+        padding: 15,
+        borderRadius: 15,
+        marginTop: 20,
+    },
+    noteTitle: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        color: '#f43f5e',
+        marginBottom: 8,
+    },
+    noteContent: {
+        fontSize: 14,
+        fontWeight: '500',
+        lineHeight: 20,
+    },
     noteInput: {
         fontSize: 14,
-        color: '#2c3e50',
         fontWeight: '500',
         minHeight: 50,
-        textAlignVertical: 'top'
-    },
-    addressText: { fontSize: 15, color: '#2c3e50', fontWeight: '600', lineHeight: 24, marginTop: 10 }
+        textAlignVertical: 'top',
+    }
 });

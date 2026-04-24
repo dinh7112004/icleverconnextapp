@@ -1,29 +1,31 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
 
 export default function PrivacyPolicyScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const renderSection = (num: string, title: string, content: string) => (
         <View style={styles.section}>
-            <Text style={styles.sectionHeader}>{num}. {title}</Text>
-            <Text style={styles.sectionBody}>{content}</Text>
+            <Text style={[styles.sectionHeader, { color: theme.text }]}>{num}. {title}</Text>
+            <Text style={[styles.sectionBody, { color: theme.textSecondary }]}>{content}</Text>
         </View>
     );
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Chính sách bảo mật</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Chính sách bảo mật</Text>
                 <View style={{ width: 44 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.card}>
-                    <View style={styles.shieldContainer}>
-                        <Ionicons name="shield-checkmark" size={40} color="#27ae60" />
+                <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
+                    <View style={[styles.shieldContainer, { backgroundColor: isDark ? '#064e3b' : '#eafaf1' }]}>
+                        <Ionicons name="shield-checkmark" size={40} color={isDark ? '#10b981' : '#27ae60'} />
                     </View>
 
                     {renderSection(
@@ -50,8 +52,8 @@ export default function PrivacyPolicyScreen({ navigation }: any) {
                         'Bạn có quyền truy cập, chỉnh sửa hoặc yêu cầu xóa thông tin cá nhân của mình bất cứ lúc nào thông qua cài đặt ứng dụng hoặc liên hệ với bộ phận hỗ trợ.'
                     )}
 
-                    <View style={styles.footerNote}>
-                        <Text style={styles.footerNoteText}>Cập nhật lần cuối: 01/01/2024</Text>
+                    <View style={[styles.footerNote, { backgroundColor: isDark ? '#1E293B' : '#f8f9fa' }]}>
+                        <Text style={[styles.footerNoteText, { color: theme.textSecondary }]}>Cập nhật lần cuối: 01/01/2024</Text>
                     </View>
                 </View>
                 <View style={{ height: 40 }} />

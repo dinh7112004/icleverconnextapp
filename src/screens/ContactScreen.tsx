@@ -1,97 +1,163 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity, ActivityIndicator, Image, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import UserHeader from '../components/UserHeader';
-import { contactApi } from '../services/api';
-import { getCurrentUser } from '../services/userHelper';
+import { contactApi, userApi, studentApi } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function ContactScreen() {
+export default function ContactScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
+    const { t } = useLanguage();
     const [contacts, setContacts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [userData, setUserData] = useState<any>(null);
+    const [studentInfo, setStudentInfo] = useState<any>(null);
+    const [hasLoadedCache, setHasLoadedCache] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
-        fetchContacts();
+        const initialize = async () => {
+            // 1. Load cache first for instant UI
+            const cached = await AsyncStorage.getItem('contacts_cache');
+            if (cached) {
+                setContacts(JSON.parse(cached));
+                setLoading(false); // Hide spinner early if we have cache
+            }
+
+            // 2. Load user data from storage
+            const userString = await AsyncStorage.getItem('user');
+            const studentString = await AsyncStorage.getItem('student_profile');
+            if (userString) setUserData(JSON.parse(userString));
+            if (studentString) setStudentInfo(JSON.parse(studentString));
+            setHasLoadedCache(true);
+
+            // 3. Fetch fresh data in background
+            fetchContacts(false);
+            
+            // Sync profile in background
+            userApi.getProfile().then(res => {
+                const fresh = res.data.data || res.data;
+                if (fresh) {
+                    setUserData(fresh);
+                    AsyncStorage.setItem('user', JSON.stringify(fresh));
+                }
+            }).catch(() => {});
+        };
+
+        initialize();
     }, []);
 
-    const fetchContacts = async () => {
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchContacts(true);
+    };
+
+    const fetchContacts = async (showLoading = true) => {
         try {
-            setLoading(true);
-            const user = await getCurrentUser();
-            const classId = user?.classId || '';
+            if (showLoading) setLoading(true);
             
-            console.log('[Contact] Fetching teachers for class:', classId);
+            // Get classId from latest available source
+            const userStr = await AsyncStorage.getItem('user');
+            const user = userStr ? JSON.parse(userStr) : userData;
+            const studentStr = await AsyncStorage.getItem('student_profile');
+            const student = studentStr ? JSON.parse(studentStr) : studentInfo;
+            
+            const classId = user?.classId || student?.currentClassId || '';
+            
+            if (!classId) {
+                setLoading(false);
+                setRefreshing(false);
+                return;
+            }
+
             const response = await contactApi.getAll(classId);
-            
-            // Handle NestJS response structure with TransformInterceptor and Pagination
             const result = response.data;
             let rawData = [];
             
             if (result && result.success) {
                 const payload = result.data;
-                if (Array.isArray(payload)) {
-                    rawData = payload;
-                } else if (payload && Array.isArray(payload.data)) {
-                    rawData = payload.data;
-                }
+                rawData = Array.isArray(payload) ? payload : (payload?.data || []);
             }
             
-            // Map real API Teacher entity to component structure
             const mappedData = rawData.map((t: any) => ({
-                id: t.id,
-                name: t.fullName || t.user?.fullName,
+                id: t.id || t._id,
+                userId: t.userId || t.user?.id || t.id,
+                name: t.fullName || t.user?.fullName || 'Giáo viên',
                 role: t.specialization || 'Giáo viên',
                 avatarUrl: t.user?.avatarUrl || t.avatarUrl,
                 isMainTeacher: t.isHomeroomTeacher || false 
             }));
             
             setContacts(mappedData);
+            await AsyncStorage.setItem('contacts_cache', JSON.stringify(mappedData));
         } catch (error) {
             console.error('Error fetching contacts:', error);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* --- HEADER (FIXED) --- */}
-            <UserHeader />
+            <UserHeader userData={userData} studentInfo={studentInfo} isReady={hasLoadedCache} />
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                }
+            >
                 {/* --- CONTACT LIST --- */}
                 <View style={styles.contentSection}>
-                    <Text style={styles.sectionTitle}>Danh bạ giáo viên</Text>
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('contact.title')}</Text>
 
                     {loading ? (
-                        <ActivityIndicator size="large" color="#3b5998" style={{ marginTop: 20 }} />
+                        <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 20 }} />
                     ) : (
                         contacts.map((item) => (
-                            <View key={item._id || item.id} style={styles.contactCard}>
+                            <View key={item._id || item.id} style={[styles.contactCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#64748b' }]}>
                                 <View style={styles.avatarContainer}>
                                     {item.avatarUrl && item.avatarUrl.startsWith('http') ? (
                                         <Image source={{ uri: item.avatarUrl }} style={styles.avatar} />
                                     ) : (
-                                        <View style={styles.avatarPlaceholder}>
-                                            <Ionicons name="person-outline" size={26} color="#3b82f6" />
+                                        <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1E293B' : '#eff6ff' }]}>
+                                            <Ionicons name="person-outline" size={26} color={theme.primary} />
                                         </View>
                                     )}
                                 </View>
 
                                 <View style={styles.contactInfo}>
-                                    <Text style={styles.contactName}>{item.name}</Text>
-                                    <Text style={styles.contactRole}>{item.role}</Text>
+                                    <Text style={[styles.contactName, { color: theme.text }]}>{item.name}</Text>
+                                    <Text style={[styles.contactRole, { color: theme.primary }]}>{item.role}</Text>
                                     {item.isMainTeacher && (
-                                        <View style={styles.badgeContainer}>
-                                            <Text style={styles.badgeText}>CN Lớp</Text>
+                                        <View style={[styles.badgeContainer, { backgroundColor: isDark ? '#334155' : '#fef9c3' }]}>
+                                            <Text style={[styles.badgeText, { color: isDark ? '#94a3b8' : '#b45309' }]}>{t('contact.homeroom')}</Text>
                                         </View>
                                     )}
                                 </View>
 
                                 <View style={styles.contactActions}>
-                                    <TouchableOpacity style={[styles.actionBtn, styles.callBtn]}>
+                                    <TouchableOpacity style={[styles.actionBtn, styles.callBtn, { backgroundColor: isDark ? '#064e3b' : '#f0fdf4' }]}>
                                         <Ionicons name="call" size={18} color="#22c55e" />
                                     </TouchableOpacity>
-                                    <TouchableOpacity style={[styles.actionBtn, styles.chatBtn]}>
+                                    <TouchableOpacity 
+                                        style={[styles.actionBtn, styles.chatBtn, { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}
+                                        onPress={() => {
+                                            const otherUser = {
+                                                id: item.userId || item.id,
+                                                fullName: item.name,
+                                                avatarUrl: item.avatarUrl
+                                            };
+                                            navigation.navigate('ChatDetail', { 
+                                                otherUser,
+                                                studentId: studentInfo?.id 
+                                            });
+                                        }}
+                                    >
                                         <Ionicons name="chatbubble-ellipses" size={18} color="#3b82f6" />
                                     </TouchableOpacity>
                                 </View>

@@ -1,26 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
-    SafeAreaView, ActivityIndicator, TextInput, Alert, Dimensions
+    SafeAreaView, ActivityIndicator, TextInput, Alert, Dimensions,
+    Modal, Platform, Image, Linking, RefreshControl
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { leaveApi } from '../services/api';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { leaveApi, uploadApi } from '../services/api';
 import { getCurrentUser } from '../services/userHelper';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import moment from 'moment';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-// Conservative calculation to ensure 5 chips fit comfortably
-const CHIP_CONTAINER_PADDING = 16 + 16 + 10; // ScrollView padding + formCard padding + periodCard padding
-const CHIP_GAP = 5;
-const CHIP_WIDTH = (SCREEN_WIDTH - (CHIP_CONTAINER_PADDING * 2) - (CHIP_GAP * 4) - 10) / 5;
+const CACHE_KEY = 'leave_history_cache';
 
 type Screen = 'list' | 'form';
-const MORNING_PERIODS = [1, 2, 3, 4, 5];
-const AFTERNOON_PERIODS = [6, 7, 8, 9, 10];
 
 export default function LeaveRequestScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
+    const { t } = useLanguage();
     const [screen, setScreen] = useState<Screen>('list');
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     const [leaveType, setLeaveType] = useState<'day' | 'period'>('day');
     const [fromDate, setFromDate] = useState('');
@@ -28,51 +32,93 @@ export default function LeaveRequestScreen({ navigation }: any) {
     const [singleDate, setSingleDate] = useState('');
     const [selectedPeriods, setSelectedPeriods] = useState<number[]>([]);
     const [reason, setReason] = useState('');
+    const [attachment, setAttachment] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
 
-    useEffect(() => {
-        (async () => {
-            try {
-                const user = await getCurrentUser();
-                if (!user) return;
-                const params = user.role === 'parent'
-                    ? { parentId: user.id }
-                    : { studentId: user.id };
-                const res = await leaveApi.getAll(params);
-                setRequests(res.data.data || []);
-            } catch (err) {
-                console.error('LeaveRequest fetch error:', err);
-            } finally {
-                setLoading(false);
-            }
-        })();
-    }, []);
+    // Calendar Modal State
+    const [showCalendar, setShowCalendar] = useState(false);
+    const [pickingFor, setPickingFor] = useState<'from' | 'to' | 'single'>('from');
+    const [currentMonth, setCurrentMonth] = useState(new Date());
 
-    const togglePeriod = (p: number) =>
-        setSelectedPeriods(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+    const fetchHistory = useCallback(async (isRefresh = false) => {
+        if (!isRefresh && requests.length === 0) setLoading(true);
+        try {
+            // Load from cache
+            if (!isRefresh && requests.length === 0) {
+                const cached = await AsyncStorage.getItem(CACHE_KEY);
+                if (cached) {
+                    setRequests(JSON.parse(cached));
+                    setLoading(false);
+                }
+            }
+
+            const user = await getCurrentUser();
+            if (!user) return;
+            const params = user.role === 'parent'
+                ? { parentId: user.id }
+                : { studentId: user.studentId || user.id };
+            const res = await leaveApi.getAll(params);
+            const data = res.data.data || [];
+            setRequests(data);
+            AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        } catch (err) {
+            console.error('LeaveRequest fetch error:', err);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [requests.length]);
+
+    useEffect(() => {
+        fetchHistory();
+    }, [fetchHistory]);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchHistory(true);
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+        });
+        if (!result.canceled) setAttachment(result.assets[0]);
+    };
 
     const handleSubmit = async () => {
         const dateVal = leaveType === 'day' ? fromDate : singleDate;
         if (!dateVal.trim() || !reason.trim()) {
-            Alert.alert('Thiếu thông tin', 'Vui lòng nhập ngày và lý do.');
-            return;
-        }
-        if (leaveType === 'period' && selectedPeriods.length === 0) {
-            Alert.alert('Chưa chọn tiết', 'Vui lòng chọn ít nhất 1 tiết nghỉ.');
+            Alert.alert(t('common.error'), t('homework.missingData'));
             return;
         }
         setSubmitting(true);
         try {
             const user = await getCurrentUser();
-            if (!user || !user.studentId) {
-                Alert.alert('Lỗi', 'Không tìm thấy thông tin học sinh.');
-                return;
+            if (!user) throw new Error('User not found');
+
+            let uploadedUrl = '';
+            if (attachment) {
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: Platform.OS === 'ios' ? attachment.uri.replace('file://', '') : attachment.uri,
+                    type: 'image/jpeg',
+                    name: attachment.fileName || `leave_${Date.now()}.jpg`,
+                } as any);
+
+                const uploadRes = await uploadApi.post(formData, 'leave-requests');
+                if (uploadRes.data.success) uploadedUrl = uploadRes.data.url;
             }
+            
             const payload: any = {
                 studentId: user.studentId,
+                parentId: user.id,
                 classId: user.classId || '',
                 type: leaveType,
                 reason,
+                attachmentUrl: uploadedUrl,
             };
             if (leaveType === 'day') {
                 payload.fromDate = fromDate;
@@ -81,278 +127,353 @@ export default function LeaveRequestScreen({ navigation }: any) {
                 payload.singleDate = singleDate;
                 payload.periods = selectedPeriods;
             }
-            const res = await leaveApi.submit(payload);
-            setRequests(prev => [res.data.data, ...prev]);
-            setFromDate(''); setToDate(''); setSingleDate('');
-            setReason(''); setSelectedPeriods([]);
-            setScreen('list');
-            Alert.alert('Thành công', 'Đã gửi đơn xin nghỉ thành công!');
+            await leaveApi.submit(payload);
+            Alert.alert(t('common.success'), t('leave.submitSuccess'), [
+                { text: 'OK', onPress: () => {
+                    setScreen('list');
+                    onRefresh();
+                }}
+            ]);
+            setReason(''); setAttachment(null);
         } catch (err: any) {
-            const msg = err.response?.data?.message || 'Không thể gửi đơn, vui lòng thử lại.';
-            Alert.alert('Lỗi', msg);
+            Alert.alert(t('common.error'), err.response?.data?.message || t('leave.submitFailed'));
         } finally {
             setSubmitting(false);
         }
     };
 
-    const statusMap: Record<string, { label: string; color: string; bg: string }> = {
-        approved: { label: 'Đã duyệt', color: '#27ae60', bg: '#e8f5e9' },
-        rejected:  { label: 'Từ chối',  color: '#e74c3c', bg: '#ffebee' },
-        pending:   { label: 'Chờ duyệt', color: '#f39c12', bg: '#fff3e0' },
+    const handleDateSelect = (d: number, m: number, y: number) => {
+        const formattedDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (pickingFor === 'from') setFromDate(formattedDate);
+        else if (pickingFor === 'to') setToDate(formattedDate);
+        else setSingleDate(formattedDate);
+        setShowCalendar(false);
     };
 
-    if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#3b5998" /></View>;
+    const formatDateDisplay = (isoStr: string) => {
+        if (!isoStr) return '';
+        const parts = isoStr.split('-');
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return isoStr;
+    };
 
-    /* ─── FORM ─── */
-    if (screen === 'form') {
+    const statusMap: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+        approved: { label: 'Đã duyệt', color: '#27ae60', bg: isDark ? '#064e3b' : '#f0fdf4', icon: 'checkmark-circle' },
+        rejected:  { label: 'Từ chối',  color: '#e74c3c', bg: isDark ? '#450a0a' : '#fef2f2', icon: 'close-circle' },
+        pending:   { label: 'Chờ duyệt', color: '#f39c12', bg: isDark ? '#451a03' : '#fff7ed', icon: 'time' },
+    };
+
+    const renderCalendar = () => {
+        const year = currentMonth.getFullYear();
+        const month = currentMonth.getMonth();
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const days = [];
+        for (let i = 0; i < firstDay; i++) days.push(null);
+        for (let i = 1; i <= daysInMonth; i++) days.push(i);
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => setScreen('list')}>
-                        <Ionicons name="chevron-back" size={28} color="#2c3e50" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Xin nghỉ phép</Text>
-                    <View style={{ width: 40 }} />
-                </View>
-
-                <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-                    <View style={styles.formCard}>
-                        <Text style={styles.formTitle}>Tạo đơn xin nghỉ</Text>
-
-                        {/* Toggle — outline border style */}
-                        <View style={styles.typeToggle}>
-                            {(['day', 'period'] as const).map(t => (
-                                <TouchableOpacity
-                                    key={t}
-                                    style={[styles.typeBtn, leaveType === t && styles.typeBtnActive]}
-                                    onPress={() => setLeaveType(t)}
-                                >
-                                    <Ionicons
-                                        name={t === 'day' ? 'calendar-outline' : 'time-outline'}
-                                        size={15}
-                                        color={leaveType === t ? '#3b5998' : '#7f8c8d'}
-                                    />
-                                    <Text style={[styles.typeBtnText, leaveType === t && styles.typeBtnTextActive]}>
-                                        {t === 'day' ? 'Nghỉ theo ngày' : 'Nghỉ theo tiết'}
-                                    </Text>
+            <Modal transparent visible={showCalendar} animationType="fade">
+                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCalendar(false)}>
+                    <View style={[styles.calendarContainer, { backgroundColor: theme.surface }]}>
+                        <View style={styles.calendarHeader}>
+                            <Text style={[styles.calendarMonthText, { color: theme.text }]}>{monthNames[month]} {year}</Text>
+                            <View style={styles.calendarNav}>
+                                <TouchableOpacity onPress={() => setCurrentMonth(new Date(year, month - 1, 1))}><Ionicons name="chevron-up" size={24} color={theme.text} /></TouchableOpacity>
+                                <TouchableOpacity onPress={() => setCurrentMonth(new Date(year, month + 1, 1))}><Ionicons name="chevron-down" size={24} color={theme.text} /></TouchableOpacity>
+                            </View>
+                        </View>
+                        <View style={styles.weekdaysRow}>{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <Text key={i} style={styles.weekdayText}>{d}</Text>)}</View>
+                        <View style={styles.daysGrid}>
+                            {days.map((d, i) => (
+                                <TouchableOpacity key={i} style={[styles.dayCell, { width: (SCREEN_WIDTH * 0.85 - 40) / 7 }]} disabled={!d} onPress={() => d && handleDateSelect(d, month, year)}>
+                                    <Text style={[styles.dayText, { color: theme.text }, !d && { color: 'transparent' }]}>{d}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
-
-                        {/* ─── Day mode ─── */}
-                        {leaveType === 'day' && (
-                            <View style={styles.dateRow}>
-                                <View style={styles.dateField}>
-                                    <Text style={styles.fieldLabel}>Từ ngày</Text>
-                                    <View style={styles.dateInput}>
-                                        <TextInput style={styles.dateInputText} placeholder="dd/mm/yyyy" placeholderTextColor="#bdc3c7" value={fromDate} onChangeText={setFromDate} />
-                                        <Ionicons name="calendar-outline" size={16} color="#7f8c8d" />
-                                    </View>
-                                </View>
-                                <View style={styles.dateField}>
-                                    <Text style={styles.fieldLabel}>Đến ngày</Text>
-                                    <View style={styles.dateInput}>
-                                        <TextInput style={styles.dateInputText} placeholder="dd/mm/yyyy" placeholderTextColor="#bdc3c7" value={toDate} onChangeText={setToDate} />
-                                        <Ionicons name="calendar-outline" size={16} color="#7f8c8d" />
-                                    </View>
-                                </View>
-                            </View>
-                        )}
-
-                        {/* ─── Period mode ─── */}
-                        {leaveType === 'period' && (
-                            <>
-                                <Text style={styles.fieldLabel}>Chọn ngày nghỉ</Text>
-                                <View style={[styles.dateInput, { marginBottom: 16 }]}>
-                                    <TextInput
-                                        style={[styles.dateInputText, { flex: 1 }]}
-                                        placeholder="dd/mm/yyyy"
-                                        placeholderTextColor="#bdc3c7"
-                                        value={singleDate}
-                                        onChangeText={setSingleDate}
-                                    />
-                                    <Ionicons name="calendar-outline" size={16} color="#7f8c8d" />
-                                </View>
-
-                                <View style={styles.periodCard}>
-                                    <View style={styles.periodCardHeader}>
-                                        <Ionicons name="time-outline" size={16} color="#3b5998" />
-                                        <Text style={styles.periodCardTitle}>Chọn các tiết nghỉ trong ngày</Text>
-                                    </View>
-
-                                    <Text style={styles.sessionLabel}>BUỔI SÁNG</Text>
-                                    <View style={styles.periodsRow}>
-                                        {MORNING_PERIODS.map(p => (
-                                            <TouchableOpacity
-                                                key={p}
-                                                style={[styles.periodChip, selectedPeriods.includes(p) && styles.periodChipActive]}
-                                                onPress={() => togglePeriod(p)}
-                                            >
-                                                <Text style={[styles.periodChipText, selectedPeriods.includes(p) && styles.periodChipTextActive]}>
-                                                    Tiết {p}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-
-                                    <Text style={[styles.sessionLabel, { marginTop: 14 }]}>BUỔI CHIỀU</Text>
-                                    <View style={styles.periodsRow}>
-                                        {AFTERNOON_PERIODS.map(p => (
-                                            <TouchableOpacity
-                                                key={p}
-                                                style={[styles.periodChip, selectedPeriods.includes(p) && styles.periodChipActive]}
-                                                onPress={() => togglePeriod(p)}
-                                            >
-                                                <Text style={[styles.periodChipText, selectedPeriods.includes(p) && styles.periodChipTextActive]}>
-                                                    Tiết {p}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                </View>
-                            </>
-                        )}
-
-                        {/* Reason */}
-                        <Text style={styles.fieldLabel}>Lý do xin nghỉ</Text>
-                        <TextInput
-                            style={styles.reasonInput}
-                            placeholder="Nhập lý do con nghỉ học..."
-                            placeholderTextColor="#bdc3c7"
-                            value={reason} onChangeText={setReason}
-                            multiline textAlignVertical="top"
-                        />
-
-                        {/* Attachment */}
-                        <Text style={styles.fieldLabel}>Minh chứng (nếu có)</Text>
-                        <TouchableOpacity style={styles.uploadBox}>
-                            <Ionicons name="cloud-upload-outline" size={28} color="#7f8c8d" />
-                            <Text style={styles.uploadTitle}>Tải lên ảnh hoặc đơn thuốc</Text>
-                            <Text style={styles.uploadHint}>PNG, JPG, PDF (Max 5MB)</Text>
-                        </TouchableOpacity>
-
-                        <View style={styles.formFooter}>
-                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setScreen('list')}>
-                                <Text style={styles.cancelBtnText}>Huỷ</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={submitting}>
-                                {submitting ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.submitBtnText}>Gửi đơn</Text>}
-                            </TouchableOpacity>
-                        </View>
                     </View>
-                </ScrollView>
-            </SafeAreaView>
+                </TouchableOpacity>
+            </Modal>
         );
-    }
+    };
 
-    /* ─── LIST ─── */
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+        <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0f172a' : '#f8f9fa' }]}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+                <TouchableOpacity onPress={() => screen === 'form' ? setScreen('list') : navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Xin nghỉ phép</Text>
-                <TouchableOpacity style={styles.addCircleBtn} onPress={() => setScreen('form')}>
-                    <Ionicons name="add" size={24} color="white" />
-                </TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Xin nghỉ phép</Text>
+                {screen === 'list' && (
+                    <TouchableOpacity style={[styles.addBtn, { backgroundColor: '#2b58de' }]} onPress={() => setScreen('form')}>
+                        <Ionicons name="add" size={28} color="white" />
+                    </TouchableOpacity>
+                )}
+                {screen === 'form' && <View style={{ width: 40 }} />}
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-                <Text style={styles.sectionLabel}>LỊCH SỬ NGHỈ PHÉP</Text>
-                {requests.length === 0 ? (
-                    <View style={styles.emptyBox}>
-                        <Ionicons name="document-outline" size={60} color="#ddd" />
-                        <Text style={styles.emptyText}>Chưa có đơn xin nghỉ nào</Text>
-                    </View>
-                ) : requests.map((item) => {
-                    const cfg = statusMap[item.status] ?? statusMap.pending;
-                    return (
-                        <View key={item.id} style={styles.requestCard}>
-                            <View style={styles.cardTopRow}>
-                                <Text style={styles.cardCreatedAt}>Ngày tạo: {item.createdAt}</Text>
-                                <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-                                    <Ionicons name="checkmark-circle-outline" size={13} color={cfg.color} />
-                                    <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+            {screen === 'form' ? (
+                <View style={styles.formOverlay}>
+                    <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
+                        <View style={[styles.formCard, { backgroundColor: theme.surface }]}>
+                            <Text style={[styles.cardFormTitle, { color: theme.text }]}>Tạo đơn xin nghỉ</Text>
+                            
+                            <View style={[styles.tabContainer, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+                                <TouchableOpacity 
+                                    style={[styles.tabBtn, leaveType === 'day' && styles.tabBtnActive]} 
+                                    onPress={() => setLeaveType('day')}
+                                >
+                                    <Ionicons name="calendar-outline" size={18} color={leaveType === 'day' ? '#2b58de' : '#64748b'} />
+                                    <Text style={[styles.tabBtnText, { color: leaveType === 'day' ? '#2b58de' : '#64748b' }]}>Nghỉ theo ngày</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.tabBtn, leaveType === 'period' && styles.tabBtnActive]} 
+                                    onPress={() => setLeaveType('period')}
+                                >
+                                    <Ionicons name="time-outline" size={18} color={leaveType === 'period' ? '#2b58de' : '#64748b'} />
+                                    <Text style={[styles.tabBtnText, { color: leaveType === 'period' ? '#2b58de' : '#64748b' }]}>Nghỉ theo tiết</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.dateSection}>
+                                <View style={styles.dateCol}>
+                                    <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Từ ngày</Text>
+                                    <TouchableOpacity 
+                                        style={[styles.datePickerBtn, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border }]}
+                                        onPress={() => { setPickingFor('from'); setShowCalendar(true); }}
+                                    >
+                                        <Text style={[styles.dateValue, { color: fromDate ? theme.text : theme.textSecondary }]}>
+                                            {fromDate ? formatDateDisplay(fromDate) : 'dd/mm/yyyy'}
+                                        </Text>
+                                        <Ionicons name="calendar-outline" size={18} color={theme.textSecondary} />
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={styles.dateCol}>
+                                    <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Đến ngày</Text>
+                                    <TouchableOpacity 
+                                        style={[styles.datePickerBtn, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border }]}
+                                        onPress={() => { setPickingFor('to'); setShowCalendar(true); }}
+                                    >
+                                        <Text style={[styles.dateValue, { color: toDate ? formatDateDisplay(toDate) : theme.textSecondary }]}>
+                                            {toDate ? formatDateDisplay(toDate) : 'dd/mm/yyyy'}
+                                        </Text>
+                                        <Ionicons name="calendar-outline" size={18} color={theme.textSecondary} />
+                                    </TouchableOpacity>
                                 </View>
                             </View>
-                            <Text style={styles.cardDisplayDate}>{item.displayDate}</Text>
-                            <View style={styles.cardBody}>
-                                <Text style={styles.cardReason}>"{item.reason}"</Text>
-                                {item.attachment && (
-                                    <View style={styles.attachmentRow}>
-                                        <Ionicons name="attach" size={14} color="#2980b9" />
-                                        <Text style={styles.attachmentText}>{item.attachment}</Text>
+
+                            <Text style={[styles.inputLabel, { color: theme.textSecondary, marginTop: 20 }]}>Lý do xin nghỉ</Text>
+                            <TextInput 
+                                style={[styles.reasonInput, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border, color: theme.text }]}
+                                placeholder="Nhập lý do con nghỉ học..."
+                                placeholderTextColor={theme.textSecondary}
+                                multiline
+                                value={reason}
+                                onChangeText={setReason}
+                                textAlignVertical="top"
+                            />
+
+                            <Text style={[styles.inputLabel, { color: theme.textSecondary, marginTop: 20 }]}>Minh chứng (nếu có)</Text>
+                            <TouchableOpacity 
+                                style={[styles.uploadBox, { backgroundColor: isDark ? '#1e293b' : '#fff' }]} 
+                                onPress={pickImage}
+                            >
+                                {attachment ? (
+                                    <View style={styles.uploadPreview}>
+                                        <Image source={{ uri: attachment.uri }} style={styles.uploadThumb} />
+                                        <Text style={{ color: theme.text, flex: 1, marginLeft: 10 }}>{attachment.fileName || 'Image picked'}</Text>
+                                        <TouchableOpacity onPress={() => setAttachment(null)}>
+                                            <Ionicons name="close-circle" size={24} color="#e74c3c" />
+                                        </TouchableOpacity>
                                     </View>
+                                ) : (
+                                    <>
+                                        <Ionicons name="cloud-upload-outline" size={32} color="#94a3b8" />
+                                        <Text style={[styles.uploadText, { color: theme.textSecondary }]}>Tải lên ảnh hoặc đơn thuốc</Text>
+                                        <Text style={styles.uploadSubText}>PNG, JPG, PDF (Max 5MB)</Text>
+                                    </>
                                 )}
+                            </TouchableOpacity>
+
+                            <View style={styles.formFooter}>
+                                <TouchableOpacity style={[styles.btnAction, styles.btnCancel]} onPress={() => setScreen('list')}>
+                                    <Text style={styles.btnCancelText}>Hủy</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.btnAction, styles.btnSubmit, { backgroundColor: '#2b58de' }]} 
+                                    onPress={handleSubmit}
+                                    disabled={submitting}
+                                >
+                                    {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.btnSubmitText}>Gửi đơn</Text>}
+                                </TouchableOpacity>
                             </View>
                         </View>
-                    );
-                })}
-            </ScrollView>
+                    </ScrollView>
+                </View>
+            ) : (
+                <View style={{ flex: 1 }}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>LỊCH SỬ NGHỈ PHÉP</Text>
+                    </View>
+                    <ScrollView 
+                        contentContainerStyle={styles.listContainer}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                    >
+                        {loading && requests.length === 0 ? (
+                            <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 50 }} />
+                        ) : requests.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Ionicons name="document-text-outline" size={64} color="#e2e8f0" />
+                                <Text style={{ color: theme.textSecondary, marginTop: 10 }}>Chưa có lịch sử nghỉ phép</Text>
+                            </View>
+                        ) : (
+                            requests.map(item => {
+                            const s = statusMap[item.status] || statusMap.pending;
+                            
+                            const getValidDate = (d: any) => {
+                                const m = moment(d);
+                                return m.isValid() ? m : null;
+                            };
+
+                            const cDate = getValidDate(item.createdAt) || getValidDate(item.fromDate) || moment();
+                            const createdDate = cDate.format('D/M/YYYY');
+                            
+                            let displayDate = '';
+                            if (item.type === 'day') {
+                                const from = getValidDate(item.fromDate) || moment();
+                                const to = getValidDate(item.toDate) || from;
+                                displayDate = from.format('D/M') === to.format('D/M') 
+                                    ? from.format('D/M') 
+                                    : `${from.format('D/M')} - ${to.format('D/M')}`;
+                            } else {
+                                displayDate = (getValidDate(item.singleDate) || moment()).format('D/M');
+                            }
+                                
+                            return (
+                                    <View key={item.id || item._id} style={[styles.historyCard, { backgroundColor: theme.surface }]}>
+                                        <View style={styles.cardTop}>
+                                            <Text style={styles.cardMeta}>Ngày tạo: {createdDate}</Text>
+                                            <View style={[styles.statusBadge, { backgroundColor: s.bg }]}>
+                                                <Ionicons name={s.icon as any} size={14} color={s.color} style={{ marginRight: 4 }} />
+                                                <Text style={[styles.statusText, { color: s.color }]}>{s.label}</Text>
+                                            </View>
+                                        </View>
+                                        
+                                        <Text style={[styles.cardDateBig, { color: theme.text }]}>{displayDate}</Text>
+                                        
+                                        <View style={[styles.cardReasonBox, { backgroundColor: isDark ? '#1e293b' : '#f8f9fa' }]}>
+                                            <Text style={[styles.cardReasonText, { color: theme.text }]}>"{item.reason}"</Text>
+                                            {item.attachmentUrl && (
+                                                <TouchableOpacity 
+                                                    style={styles.attachmentLink}
+                                                    onPress={() => Linking.openURL(item.attachmentUrl)}
+                                                >
+                                                    <Ionicons name="attach" size={16} color="#2b58de" />
+                                                    <Text style={styles.attachmentName} numberOfLines={1}>
+                                                        {item.attachmentUrl.split('/').pop()}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    </View>
+                                );
+                            })
+                        )}
+                    </ScrollView>
+                </View>
+            )}
+            {renderCalendar()}
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f8f9fa' },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 60, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee' },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
-    addCircleBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2980b9', justifyContent: 'center', alignItems: 'center' },
-    sectionLabel: { fontSize: 12, fontWeight: '700', color: '#95a5a6', letterSpacing: 1, marginBottom: 12, marginLeft: 4 },
-    requestCard: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
-    cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    cardCreatedAt: { fontSize: 12, color: '#95a5a6' },
-    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 4 },
-    statusText: { fontSize: 12, fontWeight: 'bold' },
-    cardDisplayDate: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', marginBottom: 10 },
-    cardBody: { backgroundColor: '#f8f9fa', borderRadius: 10, padding: 12, gap: 6 },
-    cardReason: { fontSize: 14, color: '#34495e', fontStyle: 'italic' },
-    attachmentRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    attachmentText: { fontSize: 13, color: '#2980b9', fontWeight: '500' },
-    emptyBox: { alignItems: 'center', marginTop: 60 },
-    emptyText: { color: '#bdc3c7', fontSize: 14, marginTop: 12 },
-
-    formCard: { backgroundColor: 'white', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-    formTitle: { fontSize: 20, fontWeight: 'bold', color: '#2c3e50', marginBottom: 18 },
-    typeToggle: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-    typeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, gap: 6, backgroundColor: '#f1f2f6', borderWidth: 1.5, borderColor: 'transparent' },
-    typeBtnActive: { backgroundColor: 'white', borderColor: '#3b5998' },
-    typeBtnText: { fontSize: 13, color: '#7f8c8d', fontWeight: '500' },
-    typeBtnTextActive: { color: '#3b5998', fontWeight: 'bold' },
-    dateRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-    dateField: { flex: 1 },
-    fieldLabel: { fontSize: 13, color: '#7f8c8d', fontWeight: '600', marginBottom: 8 },
-    dateInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, borderWidth: 1, borderColor: '#eee' },
-    dateInputText: { flex: 1, fontSize: 14, color: '#2c3e50' },
-
-    periodCard: { backgroundColor: '#f7f8ff', borderRadius: 14, padding: 10, borderWidth: 1, borderColor: '#e8eaf6', marginBottom: 16 },
-    periodCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-    periodCardTitle: { fontSize: 13, fontWeight: '700', color: '#3b5998' },
-    sessionLabel: { fontSize: 11, fontWeight: '700', color: '#95a5a6', letterSpacing: 0.8, marginBottom: 10 },
-    periodsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: CHIP_GAP },
-    periodChip: { 
-        borderWidth: 1, 
-        borderColor: '#dde1e7', 
-        borderRadius: 8, 
-        width: CHIP_WIDTH,
-        height: 36,
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        backgroundColor: 'white' 
+    container: { flex: 1 },
+    header: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 16, height: 64,
+        borderBottomWidth: 1, elevation: 2, zIndex: 10
     },
-    periodChipActive: { backgroundColor: '#3b5998', borderColor: '#3b5998' },
-    periodChipText: { fontSize: 11, color: '#34495e', fontWeight: '500' },
-    periodChipTextActive: { color: 'white', fontWeight: 'bold' },
+    backBtn: { padding: 4 },
+    headerTitle: { fontSize: 18, fontWeight: 'bold' },
+    addBtn: {
+        width: 44, height: 44, borderRadius: 22,
+        justifyContent: 'center', alignItems: 'center',
+        shadowColor: '#2b58de', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
+    },
+    sectionHeader: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.5 },
+    listContainer: { paddingHorizontal: 16, paddingBottom: 40 },
+    
+    // History Card Redesign
+    historyCard: {
+        borderRadius: 16, padding: 20, marginBottom: 16,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+    },
+    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    cardMeta: { fontSize: 13, color: '#94a3b8' },
+    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    statusText: { fontSize: 12, fontWeight: '700' },
+    cardDateBig: { fontSize: 22, fontWeight: '800', marginBottom: 15 },
+    cardReasonBox: { borderRadius: 12, padding: 16 },
+    cardReasonText: { fontSize: 15, fontStyle: 'italic', fontWeight: '500', marginBottom: 8 },
+    attachmentLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    attachmentName: { fontSize: 13, color: '#2b58de', fontWeight: '600', textDecorationLine: 'underline' },
+    
+    emptyState: { alignItems: 'center', marginTop: 100 },
+    
+    // Form Modal-like Design
+    formOverlay: { flex: 1, paddingTop: 10 },
+    formScroll: { paddingHorizontal: 16, paddingBottom: 40 },
+    formCard: { 
+        borderRadius: 24, padding: 24, 
+        shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 5 
+    },
+    cardFormTitle: { fontSize: 20, fontWeight: '800', marginBottom: 24 },
+    tabContainer: { flexDirection: 'row', borderRadius: 12, padding: 4, marginBottom: 24 },
+    tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, gap: 8 },
+    tabBtnActive: { backgroundColor: 'white', elevation: 2 },
+    tabBtnText: { fontSize: 14, fontWeight: '700' },
+    
+    dateSection: { flexDirection: 'row', justifyContent: 'space-between' },
+    dateCol: { width: '48%' },
+    inputLabel: { fontSize: 13, fontWeight: '700', marginBottom: 8, marginLeft: 4 },
+    datePickerBtn: { 
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', 
+        borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, height: 48 
+    },
+    dateValue: { fontSize: 14 },
+    
+    reasonInput: { 
+        borderWidth: 1, borderRadius: 12, padding: 16, fontSize: 15, minHeight: 120,
+    },
+    
+    uploadBox: {
+        borderWidth: 1, borderColor: '#cbd5e1', borderStyle: 'dashed', borderRadius: 16,
+        paddingVertical: 30, alignItems: 'center', justifyContent: 'center', marginTop: 4
+    },
+    uploadText: { fontSize: 14, fontWeight: '700', marginTop: 8 },
+    uploadSubText: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
+    uploadPreview: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 20 },
+    uploadThumb: { width: 50, height: 50, borderRadius: 8 },
+    
+    formFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 32, gap: 12 },
+    btnAction: { flex: 1, height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    btnCancel: { backgroundColor: '#f1f5f9' },
+    btnCancelText: { color: '#64748b', fontSize: 16, fontWeight: '700' },
+    btnSubmit: { elevation: 3 },
+    btnSubmitText: { color: 'white', fontSize: 16, fontWeight: '800' },
 
-    reasonInput: { backgroundColor: '#f8f9fa', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#2c3e50', height: 110, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
-    uploadBox: { borderWidth: 1.5, borderColor: '#ddd', borderStyle: 'dashed', borderRadius: 14, paddingVertical: 24, alignItems: 'center', gap: 6, marginBottom: 20, backgroundColor: '#fafafa' },
-    uploadTitle: { fontSize: 14, fontWeight: '600', color: '#34495e' },
-    uploadHint: { fontSize: 12, color: '#95a5a6' },
-    formFooter: { flexDirection: 'row', gap: 12 },
-    cancelBtn: { flex: 1, paddingVertical: 15, borderRadius: 14, backgroundColor: '#f1f2f6', alignItems: 'center' },
-    cancelBtnText: { fontSize: 15, fontWeight: '700', color: '#7f8c8d' },
-    submitBtn: { flex: 2, paddingVertical: 15, borderRadius: 14, backgroundColor: '#2980b9', alignItems: 'center' },
-    submitBtnText: { fontSize: 15, fontWeight: 'bold', color: 'white' },
+    // Calendar
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+    calendarContainer: { width: '85%', borderRadius: 24, padding: 20 },
+    calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    calendarMonthText: { fontSize: 18, fontWeight: '800' },
+    calendarNav: { flexDirection: 'row', gap: 12 },
+    weekdaysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    weekdayText: { width: (SCREEN_WIDTH * 0.85 - 40) / 7, textAlign: 'center', fontSize: 12, fontWeight: '700', color: '#94a3b8' },
+    daysGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+    dayCell: { height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 20, marginBottom: 4 },
+    dayText: { fontSize: 14, fontWeight: '600' },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions, Alert, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -6,62 +6,75 @@ import { academicApi, userApi } from '../services/api';
 import { Lesson, Quiz, LessonContent } from '../types';
 import RenderHtml from 'react-native-render-html';
 import YoutubePlayer from 'react-native-youtube-iframe';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
+const CACHE_KEY_PREFIX = 'lesson_cache_';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 export default function LessonDetailScreen({ route, navigation }: any) {
+    const { isDark, theme } = useTheme();
     const { lessonId, courseId, title } = route.params;
     
-    // States cho Tab & Lesson
     const [activeTab, setActiveTab] = useState<'video' | 'quiz'>('video');
     const [lesson, setLesson] = useState<Lesson | null>(null);
     const [videoContent, setVideoContent] = useState<LessonContent | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
 
-    // States cho Quiz
     const [quiz, setQuiz] = useState<Quiz | null>(null);
     const [attemptId, setAttemptId] = useState<string | null>(null);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [userAnswers, setUserAnswers] = useState<Array<{ questionId: string, answer: any }>>([]);
     const [quizResult, setQuizResult] = useState<any>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isAnswerChecked, setIsAnswerChecked] = useState(false); // Trạng thái đã bấm nút Kiểm tra chưa
-    const [currentScore, setCurrentScore] = useState(0); // Điểm số trong lượt làm bài này
+    const [isAnswerChecked, setIsAnswerChecked] = useState(false);
+    const [currentScore, setCurrentScore] = useState(0);
 
-    useEffect(() => {
-        fetchLessonAndQuiz();
-    }, []);
-
-    const fetchLessonAndQuiz = async () => {
+    const fetchLessonAndQuiz = useCallback(async () => {
+        const cacheKey = `${CACHE_KEY_PREFIX}${lessonId}`;
         try {
-            // Lấy thông tin bài học
+            // Load from cache first
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                const data = JSON.parse(cached);
+                setLesson(data.lesson);
+                setVideoContent(data.video);
+                setQuiz(data.quiz);
+                setLoading(false);
+            }
+
             const lessonRes = await academicApi.getLessonDetails(lessonId);
             const lessonData = lessonRes.data.data || lessonRes.data;
             setLesson(lessonData);
 
-            // Trích xuất video từ mảng contents của backend
             const video = lessonData.contents?.find((c: LessonContent) => c.type === 'video');
             setVideoContent(video || null);
 
-            // Ghi nhận tiến độ học tập (Hit API progress)
             recordStudentProgress(lessonData.title);
 
-            // Lấy thông tin Quiz của bài học
             const quizRes = await academicApi.getLessonQuizzes(lessonId);
             const quizData = quizRes.data.data || quizRes.data;
+            let currentQuiz = null;
             if (quizData && quizData.length > 0) {
-                setQuiz(quizData[0]); // Lấy quiz đầu tiên của bài học
+                currentQuiz = quizData[0];
+                setQuiz(currentQuiz);
             }
+
+            // Save to cache
+            AsyncStorage.setItem(cacheKey, JSON.stringify({ lesson: lessonData, video: video || null, quiz: currentQuiz }));
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
             setLoading(false);
         }
-    };
+    }, [lessonId]);
+
+    useEffect(() => {
+        fetchLessonAndQuiz();
+    }, [fetchLessonAndQuiz]);
 
     const recordStudentProgress = async (lessonTitle: string) => {
         try {
@@ -69,10 +82,10 @@ export default function LessonDetailScreen({ route, navigation }: any) {
             if (userData) {
                 const user = JSON.parse(userData);
                 await academicApi.recordLessonProgress(lessonId, {
-                    studentId: user._id || user.id, // Lấy ID của học sinh đang đăng nhập
+                    studentId: user._id || user.id,
                     courseId: courseId,
                     lessonTitle: lessonTitle,
-                    timeSpent: 0, // Vừa vào thì timeSpent = 0
+                    timeSpent: 0,
                 });
             }
         } catch (error) {
@@ -80,14 +93,12 @@ export default function LessonDetailScreen({ route, navigation }: any) {
         }
     };
 
-    // Hàm lấy ID Youtube từ URL
     const getYoutubeId = (url: string) => {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
         const match = url.match(regExp);
         return (match && match[2].length === 11) ? match[2] : null;
     };
 
-    // Hàm gọi API bắt đầu làm bài
     const handleStartQuiz = async () => {
         if (!quiz) return;
         try {
@@ -96,7 +107,7 @@ export default function LessonDetailScreen({ route, navigation }: any) {
             const user = JSON.parse(userData);
 
             const response = await academicApi.startQuiz(quiz._id, {
-                studentId: user.id || user._id, // Ưu tiên dùng ID UUID của Postgres
+                studentId: user.id || user._id,
                 studentName: user.fullName || 'Học sinh'
             });
             const responseData = response.data.data || response.data;
@@ -110,37 +121,30 @@ export default function LessonDetailScreen({ route, navigation }: any) {
         }
     };
 
-    // Hàm chọn đáp án
     const handleSelectOption = (optionId: string) => {
-        if (!quiz) return;
+        if (!quiz || isAnswerChecked) return;
         const currentQuestion = quiz.questions[currentQuestionIndex];
-        
         const newAnswers = [...userAnswers];
         const answerIndex = newAnswers.findIndex(a => a.questionId === currentQuestion.id);
-        
-        if (answerIndex > -1) {
-            newAnswers[answerIndex].answer = optionId;
-        } else {
-            newAnswers.push({ questionId: currentQuestion.id, answer: optionId });
-        }
+        if (answerIndex > -1) newAnswers[answerIndex].answer = optionId;
+        else newAnswers.push({ questionId: currentQuestion.id, answer: optionId });
         setUserAnswers(newAnswers);
     };
 
-    // Hàm gọi API Nộp bài
     const handleSubmitQuiz = async () => {
         if (!attemptId) return;
         setIsSubmitting(true);
         try {
             const response = await academicApi.submitQuiz(attemptId, userAnswers);
             const responseData = response.data.data || response.data;
-            
-            console.log("Submit Quiz Response:", responseData);
-            console.log("Rewards received:", responseData.rewards);
-            
             setQuizResult(responseData); 
             
-            // Cập nhật lại profile
-            await userApi.getProfile(); 
+            // Sync fresh user data to update coins/points immediately
+            const userRes = await userApi.getProfile();
+            const freshUser = userRes.data.data || userRes.data;
+            if (freshUser) {
+                await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+            }
         } catch (error: any) {
             Alert.alert('Lỗi', 'Không thể nộp bài, vui lòng thử lại.');
         } finally {
@@ -151,59 +155,36 @@ export default function LessonDetailScreen({ route, navigation }: any) {
     const renderQuizContent = () => {
         if (!quiz) {
             return (
-                <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>Bài học này chưa có bài kiểm tra.</Text>
+                <View style={[styles.emptyContainer, { backgroundColor: theme.background }]}>
+                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Bài học này chưa có bài kiểm tra.</Text>
                 </View>
             );
         }
 
-        // TRẠNG THÁI 1: Đã nộp bài (Xem kết quả vinh danh)
         if (quizResult) {
             const pointsAwarded = quizResult.rewards?.points || 0;
             const coinsAwarded = quizResult.rewards?.coins || 0;
-
             return (
                 <View style={styles.resultContainer}>
                     <View style={styles.medalWrapper}>
-                        <View style={styles.medalCircle}>
-                            <Ionicons name="ribbon" size={80} color="#f1c40f" />
-                        </View>
-                        <Ionicons name="star" size={24} color="#f1c40f" style={styles.starSmall} />
-                        <Ionicons name="star" size={32} color="#f1c40f" style={styles.starLarge} />
+                        <View style={[styles.medalCircle, { backgroundColor: isDark ? '#2D3748' : '#fff9db' }]}><Ionicons name="ribbon" size={80} color="#f1c40f" /></View>
                     </View>
-
-                    <Text style={styles.resultTitle}>Xuất sắc!</Text>
-                    <Text style={styles.resultDesc}>
-                        Bạn đã hoàn thành bài học và trả lời đúng {(quizResult.answers?.filter((a: any) => a.isCorrect).length) || 0}/{quiz.questions.length} câu.
-                    </Text>
-
+                    <Text style={[styles.resultTitle, { color: theme.text }]}>Xuất sắc!</Text>
                     <View style={styles.rewardRow}>
-                        <View style={styles.rewardCard}>
-                            <Text style={styles.rewardLabel}>ĐIỂM THƯỞNG</Text>
+                        <View style={[styles.rewardCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                            <Text style={[styles.rewardLabel, { color: theme.textSecondary }]}>ĐIỂM</Text>
                             <Text style={[styles.rewardValue, { color: '#3498db' }]}>+{pointsAwarded}</Text>
                         </View>
-                        <View style={styles.rewardCard}>
-                            <Text style={styles.rewardLabel}>XU NHẬN ĐƯỢC</Text>
+                        <View style={[styles.rewardCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                            <Text style={[styles.rewardLabel, { color: theme.textSecondary }]}>XU</Text>
                             <Text style={[styles.rewardValue, { color: '#f39c12' }]}>+{coinsAwarded}</Text>
                         </View>
                     </View>
-                    
-                    <TouchableOpacity 
-                        style={styles.mainActionBtn} 
-                        onPress={() => navigation.goBack()}
-                    >
-                        <Text style={styles.mainActionText}>Về danh sách bài học</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.secondaryBtn} onPress={handleStartQuiz}>
-                        <Ionicons name="refresh" size={20} color="#3498db" style={{ marginRight: 8 }} />
-                        <Text style={styles.secondaryBtnText}>Làm lại</Text>
-                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.mainActionBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.goBack()}><Text style={styles.mainActionText}>Hoàn thành</Text></TouchableOpacity>
                 </View>
             );
         }
 
-        // TRẠNG THÁI 2: Đang làm bài
         if (attemptId) {
             const currentQuestion = quiz.questions[currentQuestionIndex];
             const currentAnswerId = userAnswers.find(a => a.questionId === currentQuestion?.id)?.answer;
@@ -212,233 +193,142 @@ export default function LessonDetailScreen({ route, navigation }: any) {
             return (
                 <View style={styles.quizSection}>
                     <View style={styles.quizHeader}>
-                        <Text style={styles.quizCount}>Câu {currentQuestionIndex + 1} / {quiz.questions.length}</Text>
+                        <Text style={[styles.quizCount, { color: theme.textSecondary }]}>Câu {currentQuestionIndex + 1} / {quiz.questions.length}</Text>
                         <View style={styles.scoreBadge}>
                             <Text style={styles.scoreText}>Điểm: {currentScore}</Text>
                         </View>
                     </View>
-                    
+
                     <View style={styles.progressBarContainer}>
                         <View style={[styles.progressFill, { width: `${((currentQuestionIndex + 1) / quiz.questions.length) * 100}%` }]} />
                     </View>
 
-                    <Text style={styles.questionText}>{currentQuestion?.question}</Text>
-
+                    <Text style={[styles.questionText, { color: theme.text }]}>{currentQuestion?.question}</Text>
+                    
                     {currentQuestion?.options.map((option) => {
                         const isSelected = currentAnswerId === option.id;
                         const isCorrect = option.isCorrect;
                         
-                        let cardStyle: any[] = [styles.optionCard];
-                        let radioStyle: any[] = [styles.optionRadio];
-                        let textStyle: any[] = [styles.optionText];
+                        let cardStyle = {};
+                        let iconName = 'radio-button-off';
+                        let iconColor = theme.textSecondary;
 
                         if (isAnswerChecked) {
                             if (isCorrect) {
-                                cardStyle.push(styles.correctOption);
-                                textStyle.push(styles.correctText);
-                                radioStyle.push(styles.correctRadio);
+                                cardStyle = { borderColor: '#10b981', backgroundColor: isDark ? '#064e3b' : '#ecfdf5' };
+                                iconName = 'checkmark-circle';
+                                iconColor = '#10b981';
                             } else if (isSelected) {
-                                cardStyle.push(styles.wrongOption);
-                                textStyle.push(styles.wrongText);
-                                radioStyle.push(styles.wrongRadio);
+                                cardStyle = { borderColor: '#ef4444', backgroundColor: isDark ? '#7f1d1d' : '#fef2f2' };
+                                iconName = 'close-circle';
+                                iconColor = '#ef4444';
                             }
                         } else if (isSelected) {
-                            cardStyle.push(styles.selectedOption);
+                            cardStyle = { borderColor: theme.primary, backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' };
+                            iconName = 'radio-button-on';
+                            iconColor = theme.primary;
                         }
 
                         return (
                             <TouchableOpacity 
                                 key={option.id} 
-                                style={cardStyle}
-                                onPress={() => !isAnswerChecked && handleSelectOption(option.id)}
+                                style={[styles.optionCard, { backgroundColor: theme.surface, borderColor: theme.border }, cardStyle]} 
+                                onPress={() => handleSelectOption(option.id)}
                                 disabled={isAnswerChecked}
                             >
-                                <View style={radioStyle}>
-                                    {isCorrect && isAnswerChecked ? <Ionicons name="checkmark" size={16} color="white" /> : 
-                                     !isCorrect && isSelected && isAnswerChecked ? <Ionicons name="close" size={16} color="white" /> :
-                                     isSelected ? <View style={styles.radioInner} /> : null}
-                                </View>
-                                <Text style={textStyle}>{option.text}</Text>
+                                <Text style={[styles.optionText, { color: theme.text }]}>{option.text}</Text>
+                                <Ionicons name={iconName as any} size={24} color={iconColor} />
                             </TouchableOpacity>
                         );
                     })}
 
-                    {/* GIẢI THÍCH BOX (Chỉ hiện SAU KHI bấm Kiểm tra) */}
-                    {isAnswerChecked && (
-                        <View style={styles.explanationBox}>
+                    {isAnswerChecked && currentQuestion?.explanation && (
+                        <View style={[styles.explanationBox, { backgroundColor: isDark ? '#1E293B' : '#f0f7ff', borderColor: isDark ? '#334155' : '#e0eefe' }]}>
                             <View style={styles.explanationHeader}>
-                                <Ionicons name="information-circle" size={20} color="#3498db" />
-                                <Text style={styles.explanationTitle}>Lời giải chi tiết:</Text>
+                                <Ionicons name="play-circle-outline" size={20} color={theme.primary} />
+                                <Text style={[styles.explanationTitle, { color: theme.primary }]}>Giải thích:</Text>
                             </View>
-                            <Text style={styles.explanationText}>
-                                {currentQuestion.explanation || "Đáp án đúng là " + (currentQuestion.options.find(o => o.isCorrect)?.text) + ". Hãy ghi nhớ kiến thức này nhé!"}
-                            </Text>
+                            <Text style={[styles.explanationText, { color: theme.text }]}>{currentQuestion.explanation}</Text>
                         </View>
                     )}
 
-                    <View style={styles.navButtons}>
+                    <View style={{ marginTop: 20 }}>
                         {!isAnswerChecked ? (
                             <TouchableOpacity 
-                                style={[styles.submitBtn, !currentAnswerId && styles.disabledBtn]} 
+                                style={[styles.submitBtn, { backgroundColor: theme.primary, opacity: currentAnswerId ? 1 : 0.6 }]} 
                                 disabled={!currentAnswerId}
-                                onPress={() => {
-                                    setIsAnswerChecked(true);
-                                    // Kiểm tra xem có đúng không để cộng điểm local
-                                    const correctOptionId = currentQuestion.options.find(o => o.isCorrect)?.id;
-                                    if (currentAnswerId === correctOptionId) {
-                                        setCurrentScore(prev => prev + 10);
+                                onPress={() => setIsAnswerChecked(true)}
+                            >
+                                <Text style={styles.submitBtnText}>Kiểm tra</Text>
+                                <Ionicons name="shield-checkmark-outline" size={20} color="white" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity 
+                                style={[styles.submitBtn, { backgroundColor: theme.primary }]} 
+                                onPress={async () => {
+                                    if (isLastQuestion) {
+                                        await handleSubmitQuiz();
+                                    } else {
+                                        setIsAnswerChecked(false);
+                                        setCurrentQuestionIndex(v => v + 1);
                                     }
                                 }}
                             >
-                                <Text style={styles.submitBtnText}>Kiểm tra</Text>
+                                <Text style={styles.submitBtnText}>{isLastQuestion ? 'Hoàn thành' : 'Câu tiếp theo'}</Text>
+                                <Ionicons name="arrow-forward" size={20} color="white" style={{ marginLeft: 8 }} />
                             </TouchableOpacity>
-                        ) : (
-                            !isLastQuestion ? (
-                                <TouchableOpacity 
-                                    style={styles.nextBtn} 
-                                    onPress={() => {
-                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                        setCurrentQuestionIndex(prev => prev + 1);
-                                        setIsAnswerChecked(false); // Reset trạng thái cho câu tiếp theo
-                                    }}
-                                >
-                                    <Text style={styles.nextBtnText}>Tiếp theo</Text>
-                                    <Ionicons name="arrow-forward" size={20} color="white" style={{ marginLeft: 8 }} />
-                                </TouchableOpacity>
-                            ) : (
-                                <TouchableOpacity 
-                                    style={styles.submitBtn} 
-                                    disabled={isSubmitting}
-                                    onPress={handleSubmitQuiz}
-                                >
-                                    {isSubmitting ? (
-                                        <ActivityIndicator color="white" />
-                                    ) : (
-                                        <>
-                                            <Text style={styles.submitBtnText}>Hoàn thành</Text>
-                                            <Ionicons name="checkmark-done" size={22} color="white" style={{ marginLeft: 8 }} />
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            )
                         )}
                     </View>
                 </View>
             );
         }
 
-        // TRẠNG THÁI 3: Màn hình chờ bắt đầu
         return (
-            <View style={styles.startQuizContainer}>
-                <Ionicons name="document-text" size={80} color="#3498db" />
-                <Text style={styles.quizTitle}>{quiz.title}</Text>
-                <Text style={styles.quizDesc}>{quiz.description}</Text>
-                <View style={styles.quizMeta}>
-                    <Text style={styles.metaInfo}>🕒 {quiz.timeLimit ? `${quiz.timeLimit} phút` : 'Không giới hạn'}</Text>
-                    <Text style={styles.metaInfo}>📝 {quiz.questions.length} câu hỏi</Text>
-                </View>
-                <TouchableOpacity style={styles.startBtn} onPress={handleStartQuiz}>
-                    <Text style={styles.startBtnText}>BẮT ĐẦU LUYỆN TẬP</Text>
-                </TouchableOpacity>
+            <View style={[styles.startQuizContainer, { backgroundColor: theme.background }]}>
+                <Ionicons name="document-text" size={80} color={theme.primary} />
+                <Text style={[styles.quizTitle, { color: theme.text }]}>{quiz.title}</Text>
+                <TouchableOpacity style={[styles.startBtn, { backgroundColor: theme.primary, marginTop: 30 }]} onPress={handleStartQuiz}><Text style={styles.startBtnText}>BẮT ĐẦU LUYỆN TẬP</Text></TouchableOpacity>
             </View>
         );
     };
 
-    if (loading) {
+    if (loading && !lesson) {
         return (
-            <SafeAreaView style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#3498db" />
+            <SafeAreaView style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+                <ActivityIndicator size="large" color={theme.primary} />
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.surface }]}>
+                <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="chevron-back" size={28} color={theme.text} /></TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{title}</Text>
                 <View style={{ width: 28 }} />
             </View>
 
-            <View style={styles.tabContainer}>
-                <TouchableOpacity 
-                    style={[styles.tab, activeTab === 'video' && styles.activeTab]}
-                    onPress={() => setActiveTab('video')}
-                >
-                    <Text style={[styles.tabText, activeTab === 'video' && styles.activeTabText]}>Bài học</Text>
+            <View style={[styles.tabContainer, { borderBottomColor: theme.border }]}>
+                <TouchableOpacity style={[styles.tab, activeTab === 'video' && [styles.activeTab, { borderBottomColor: theme.primary }]]} onPress={() => setActiveTab('video')}>
+                    <Text style={[styles.tabText, { color: theme.textSecondary }, activeTab === 'video' && { color: theme.primary }]}>Bài học</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                    style={[styles.tab, activeTab === 'quiz' && styles.activeTab]}
-                    onPress={() => {
-                        setActiveTab('quiz');
-                        if (quiz && !attemptId && !quizResult) {
-                            handleStartQuiz();
-                        }
-                    }}
-                >
-                    <Text style={[styles.tabText, activeTab === 'quiz' && styles.activeTabText]}>
-                        {attemptId ? `Điểm: ${currentScore}` : 'Luyện tập'}
-                    </Text>
+                <TouchableOpacity style={[styles.tab, activeTab === 'quiz' && [styles.activeTab, { borderBottomColor: theme.primary }]]} onPress={() => setActiveTab('quiz')}>
+                    <Text style={[styles.tabText, { color: theme.textSecondary }, activeTab === 'quiz' && { color: theme.primary }]}>Luyện tập</Text>
                 </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
                 {activeTab === 'video' ? (
                     <View>
                         {videoContent?.url ? (
-                            <YoutubePlayer
-                                height={220}
-                                play={false}
-                                videoId={getYoutubeId(videoContent.url) || ''}
-                                webColor="black" 
-                            />
+                            <YoutubePlayer height={220} play={false} videoId={getYoutubeId(videoContent.url) || ''} />
                         ) : (
-                            <View style={styles.videoPlaceholder}>
-                                <Ionicons name="document-text" size={64} color="white" />
-                                <Text style={styles.videoText}>Bài học lý thuyết</Text>
-                            </View>
+                            <View style={styles.videoPlaceholder}><Ionicons name="document-text" size={64} color="white" /><Text style={styles.videoText}>Lý thuyết</Text></View>
                         )}
-
                         <View style={styles.contentSection}>
-                            <Text style={styles.lessonDetailTitle}>{lesson?.title}</Text>
-                            <RenderHtml
-                                contentWidth={width - 40}
-                                source={{ html: lesson?.description || '' }}
-                                tagsStyles={{
-                                    p: { fontSize: 16, color: '#334155', lineHeight: 26, marginBottom: 12 },
-                                    h3: { fontSize: 20, fontWeight: 'bold', color: '#1e293b', marginTop: 20, marginBottom: 12 },
-                                    li: { fontSize: 16, color: '#334155', marginBottom: 5 },
-                                    b: { color: '#000', fontWeight: 'bold' }
-                                }}
-                            />
-                            
-                            {lesson?.contents?.filter((c: any) => c.type === 'document').map((doc: any) => (
-                                <View key={doc.id} style={styles.docCard}>
-                                    <View style={styles.docIconBg}>
-                                        <Ionicons name="document-text" size={22} color="#3b82f6" />
-                                    </View>
-                                    <View style={{ marginLeft: 12, flex: 1 }}>
-                                        <Text style={styles.docTitle} numberOfLines={1}>{doc.title}</Text>
-                                        <Text style={styles.docSub}>Tài liệu đính kèm • PDF</Text>
-                                    </View>
-                                    <Ionicons name="download-outline" size={20} color="#94a3b8" />
-                                </View>
-                            ))}
-
-                            <TouchableOpacity 
-                                style={styles.startPracticeBtnLarge} 
-                                onPress={() => {
-                                    setActiveTab('quiz');
-                                    if (quiz && !attemptId && !quizResult) {
-                                        handleStartQuiz();
-                                    }
-                                }}
-                            >
-                                <Text style={styles.startPracticeTextLarge}>Bắt đầu làm bài tập</Text>
-                                <Ionicons name="arrow-forward" size={22} color="white" style={{ marginLeft: 10 }} />
-                            </TouchableOpacity>
+                            <Text style={[styles.lessonDetailTitle, { color: theme.text }]}>{lesson?.title}</Text>
+                            <RenderHtml contentWidth={width - 40} source={{ html: lesson?.description || '' }} tagsStyles={{ p: { color: theme.text }, li: { color: theme.text } }} />
+                            <TouchableOpacity style={[styles.startPracticeBtnLarge, { backgroundColor: theme.primary }]} onPress={() => setActiveTab('quiz')}><Text style={styles.startPracticeTextLarge}>Làm bài tập</Text></TouchableOpacity>
                         </View>
                     </View>
                 ) : (
@@ -478,19 +368,6 @@ const styles = StyleSheet.create({
     contentSection: { padding: 20 },
     lessonDetailTitle: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', marginBottom: 15 },
     lessonBody: { fontSize: 15, color: '#34495e', lineHeight: 24 },
-    docCard: { 
-        marginTop: 20, 
-        padding: 15, 
-        backgroundColor: '#f8fbfc', 
-        borderRadius: 12, 
-        flexDirection: 'row', 
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#edf2f7'
-    },
-    docTitle: { fontWeight: 'bold', fontSize: 14, color: '#2d3748' },
-    docSub: { fontSize: 12, color: '#718096', marginTop: 2 },
-    
     quizSection: { paddingHorizontal: 20, paddingTop: 10 },
     quizHeader: { 
         flexDirection: 'row', 

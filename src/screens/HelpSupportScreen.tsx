@@ -4,6 +4,7 @@ import {
     TouchableOpacity, LayoutAnimation, Platform, UIManager
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -33,6 +34,7 @@ const FAQ_DATA = [
 ];
 
 export default function HelpSupportScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
     const toggleAccordion = (index: number) => {
@@ -41,57 +43,57 @@ export default function HelpSupportScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Trợ giúp & Hỗ trợ</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Trợ giúp & Hỗ trợ</Text>
                 <View style={{ width: 44 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {/* --- QUICK CONTACT --- */}
                 <View style={styles.contactRow}>
-                    <TouchableOpacity style={styles.contactCard}>
-                        <View style={[styles.iconBox, { backgroundColor: '#f0f4ff' }]}>
-                            <Feather name="phone" size={20} color="#2b58de" />
+                    <TouchableOpacity style={[styles.contactCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
+                        <View style={[styles.iconBox, { backgroundColor: isDark ? '#1e3a8a' : '#f0f4ff' }]}>
+                            <Feather name="phone" size={20} color={isDark ? '#3b82f6' : '#2b58de'} />
                         </View>
-                        <Text style={styles.contactText}>Hotline 1900 xxxx</Text>
+                        <Text style={[styles.contactText, { color: theme.text }]}>Hotline 1900 xxxx</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.contactCard}>
-                        <View style={[styles.iconBox, { backgroundColor: '#fff5f0' }]}>
-                            <Feather name="mail" size={20} color="#e67e22" />
+                    <TouchableOpacity style={[styles.contactCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
+                        <View style={[styles.iconBox, { backgroundColor: isDark ? '#451a03' : '#fff5f0' }]}>
+                            <Feather name="mail" size={20} color={isDark ? '#fbbf24' : '#e67e22'} />
                         </View>
-                        <Text style={styles.contactText}>Gửi Email hỗ trợ</Text>
+                        <Text style={[styles.contactText, { color: theme.text }]}>Gửi Email hỗ trợ</Text>
                     </TouchableOpacity>
                 </View>
 
                 {/* --- FAQ SECTION --- */}
                 <View style={styles.sectionHeader}>
-                    <Ionicons name="help-circle-outline" size={22} color="#2b58de" />
-                    <Text style={styles.sectionTitle}>Câu hỏi thường gặp</Text>
+                    <Ionicons name="help-circle-outline" size={22} color={theme.primary} />
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Câu hỏi thường gặp</Text>
                 </View>
 
                 {FAQ_DATA.map((item, index) => {
                     const isExpanded = expandedIndex === index;
                     return (
-                        <View key={item.id} style={[styles.faqItem, isExpanded && styles.faqItemExpanded]}>
+                        <View key={item.id} style={[styles.faqItem, { backgroundColor: theme.surface }, isExpanded && [styles.faqItemExpanded, { borderColor: theme.primary }]]}>
                             <TouchableOpacity 
                                 style={styles.faqHeader} 
                                 onPress={() => toggleAccordion(index)}
                                 activeOpacity={0.7}
                             >
-                                <Text style={[styles.faqQuestion, isExpanded && styles.faqQuestionActive]}>{item.question}</Text>
+                                <Text style={[styles.faqQuestion, { color: theme.text }, isExpanded && [styles.faqQuestionActive, { color: theme.primary }]]}>{item.question}</Text>
                                 <Ionicons 
                                     name={isExpanded ? "chevron-up" : "chevron-down"} 
                                     size={18} 
-                                    color={isExpanded ? "#2b58de" : "#bdc3c7"} 
+                                    color={isExpanded ? theme.primary : theme.textSecondary} 
                                 />
                             </TouchableOpacity>
                             {isExpanded && (
-                                <View style={styles.faqBody}>
-                                    <Text style={styles.faqAnswer}>{item.answer}</Text>
+                                <View style={[styles.faqBody, { borderTopColor: theme.border }]}>
+                                    <Text style={[styles.faqAnswer, { color: theme.textSecondary }]}>{item.answer}</Text>
                                 </View>
                             )}
                         </View>

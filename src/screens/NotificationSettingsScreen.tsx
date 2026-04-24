@@ -5,8 +5,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import CustomSwitch from '../components/CustomSwitch';
+import { useTheme } from '../context/ThemeContext';
 
 export default function NotificationSettingsScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [settings, setSettings] = useState({
         grades: true,
         homework: true,
@@ -28,14 +30,14 @@ export default function NotificationSettingsScreen({ navigation }: any) {
         key: keyof typeof settings,
         bgColor: string
     ) => (
-        <View style={styles.settingItem}>
+        <View style={[styles.settingItem, { borderBottomColor: theme.border }]}>
             <View style={styles.itemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: bgColor }]}>
+                <View style={[styles.iconContainer, { backgroundColor: isDark ? '#1E293B' : bgColor }]}>
                     {icon}
                 </View>
                 <View style={styles.textContainer}>
-                    <Text style={styles.itemTitle}>{title}</Text>
-                    <Text style={styles.itemDesc}>{desc}</Text>
+                    <Text style={[styles.itemTitle, { color: theme.text }]}>{title}</Text>
+                    <Text style={[styles.itemDesc, { color: theme.textSecondary }]}>{desc}</Text>
                 </View>
             </View>
             <CustomSwitch
@@ -46,29 +48,29 @@ export default function NotificationSettingsScreen({ navigation }: any) {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* --- HEADER --- */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Cài đặt thông báo</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Cài đặt thông báo</Text>
                 <View style={{ width: 44 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {/* --- INFO BANNER --- */}
-                <View style={styles.infoBanner}>
-                    <View style={styles.infoIconBox}>
+                <View style={[styles.infoBanner, { backgroundColor: isDark ? '#1E293B' : '#eff6ff', borderColor: theme.border }]}>
+                    <View style={[styles.infoIconBox, { backgroundColor: theme.primary }]}>
                         <Ionicons name="information-circle" size={22} color="white" />
                     </View>
-                    <Text style={styles.infoText}>
+                    <Text style={[styles.infoText, { color: theme.textSecondary }]}>
                         Tùy chỉnh các loại thông báo bạn muốn nhận. Các thông báo quan trọng khẩn cấp từ nhà trường vẫn sẽ được gửi.
                     </Text>
                 </View>
 
                 {/* --- SETTINGS LIST --- */}
-                <View style={styles.settingsCard}>
+                <View style={[styles.settingsCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
                     {renderSettingItem(
                         <Ionicons name="book" size={20} color="#22c55e" />,
                         "Cập nhật điểm số",

@@ -1,18 +1,20 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
 
 export default function AIScreen() {
+    const { isDark, theme } = useTheme();
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* --- AI HEADER --- */}
-            <View style={styles.aiHeader}>
+            <View style={[styles.aiHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <View style={styles.headerLeft}>
-                    <View style={styles.robotIconBox}>
+                    <View style={[styles.robotIconBox, { backgroundColor: theme.primary }]}>
                         <MaterialCommunityIcons name="robot-happy" size={24} color="white" />
                     </View>
                     <View style={{ marginLeft: 12 }}>
-                        <Text style={styles.aiTitle}>Trợ lý iClever AI</Text>
+                        <Text style={[styles.aiTitle, { color: theme.text }]}>Trợ lý iClever AI</Text>
                         <View style={styles.statusRow}>
                             <View style={styles.activeDot} />
                             <Text style={styles.statusText}>Đang hoạt động</Text>
@@ -24,39 +26,39 @@ export default function AIScreen() {
             <ScrollView style={styles.chatContainer} showsVerticalScrollIndicator={false}>
                 {/* --- MESSAGE BUBBLE --- */}
                 <View style={styles.messageRow}>
-                    <View style={styles.aiMessageBubble}>
+                    <View style={[styles.aiMessageBubble, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
                         <View style={styles.aiLabelRow}>
                             <Ionicons name="sparkles" size={14} color="#f39c12" />
-                            <Text style={styles.aiLabel}>ICLEVER AI</Text>
+                            <Text style={[styles.aiLabel, { color: theme.textSecondary }]}>ICLEVER AI</Text>
                         </View>
-                        <Text style={styles.messageText}>
+                        <Text style={[styles.messageText, { color: theme.text }]}>
                             Chào bạn! Tôi là trợ lý ảo iClever AI. Tôi có thể giúp gì cho bạn hôm nay?
                         </Text>
-                        <Text style={styles.timeText}>10:07 AM</Text>
+                        <Text style={[styles.timeText, { color: theme.textSecondary }]}>10:07 AM</Text>
                     </View>
                 </View>
 
                 {/* Suggestions can stay but moved here or removed as per image */}
                 <View style={styles.suggestedActions}>
-                    <Text style={styles.suggestedTitle}>Bạn có thể hỏi mình:</Text>
-                    <TouchableOpacity style={styles.suggestedBtn}>
-                        <Text style={styles.suggestedBtnText}>Giải bài tập Toán lớp 7</Text>
+                    <Text style={[styles.suggestedTitle, { color: theme.textSecondary }]}>Bạn có thể hỏi mình:</Text>
+                    <TouchableOpacity style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
+                        <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Giải bài tập Toán lớp 7</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.suggestedBtn}>
-                        <Text style={styles.suggestedBtnText}>Dịch đoạn văn bản sang tiếng Anh</Text>
+                    <TouchableOpacity style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
+                        <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Dịch đoạn văn bản sang tiếng Anh</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
 
             {/* --- INPUT AREA --- */}
-            <View style={styles.inputArea}>
+            <View style={[styles.inputArea, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
                 <TouchableOpacity style={styles.attachmentBtn}>
-                    <Ionicons name="add" size={28} color="#95a5a6" />
+                    <Ionicons name="add" size={28} color={theme.textSecondary} />
                 </TouchableOpacity>
-                <View style={styles.inputBox}>
-                    <Text style={styles.inputText}>Hỏi trợ lý iClever...</Text>
+                <View style={[styles.inputBox, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
+                    <Text style={[styles.inputText, { color: theme.textSecondary }]}>Hỏi trợ lý iClever...</Text>
                 </View>
-                <TouchableOpacity style={styles.sendBtn}>
+                <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme.primary }]}>
                     <Ionicons name="send" size={20} color="white" />
                 </TouchableOpacity>
             </View>

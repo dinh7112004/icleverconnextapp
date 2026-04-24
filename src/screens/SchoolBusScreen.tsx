@@ -3,26 +3,38 @@ import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
     SafeAreaView, ActivityIndicator, Image, Dimensions
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { busApi } from '../services/api';
 import { getCurrentStudentId } from '../services/userHelper';
+import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function SchoolBusScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [busInfo, setBusInfo] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchBusInfo();
-    }, []);
-
-    const fetchBusInfo = async () => {
+    const loadInitialData = async () => {
+        const cacheKey = 'school_bus_cache';
         try {
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                setBusInfo(JSON.parse(cached));
+                setLoading(false);
+            }
+
             const studentId = await getCurrentStudentId();
-            if (!studentId) { setLoading(false); return; }
+            if (!studentId) {
+                setLoading(false);
+                return;
+            }
+
             const response = await busApi.getInfo(studentId);
-            setBusInfo(response.data.data);
+            const data = response.data.data;
+            setBusInfo(data);
+            AsyncStorage.setItem(cacheKey, JSON.stringify(data));
         } catch (error) {
             console.error('Error fetching bus info:', error);
         } finally {
@@ -30,32 +42,30 @@ export default function SchoolBusScreen({ navigation }: any) {
         }
     };
 
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#3b5998" />
-                </View>
-            </SafeAreaView>
-        );
-    }
+    useEffect(() => {
+        loadInitialData();
+    }, []);
 
-    const renderDriverRow = (person: any, isFirst: boolean) => (
-        <View style={[styles.personRow, !isFirst && styles.personBorder]}>
-            <View style={[styles.avatar, { backgroundColor: person.initials === 'TX' ? '#fff9db' : '#fff0f6' }]}>
+
+    const renderDriverRow = (person: any, isFirst: boolean) => {
+        if (!person) return null;
+        return (
+        <View style={[styles.personRow, !isFirst && [styles.personBorder, { borderTopColor: theme.border }]]}>
+            <View style={[styles.avatar, { backgroundColor: person.initials === 'TX' ? (isDark ? '#451a03' : '#fff9db') : (isDark ? '#4c0519' : '#fff0f6') }]}>
                 <Text style={[styles.avatarText, { color: person.initials === 'TX' ? '#f59f00' : '#d6336c' }]}>
                     {person.initials}
                 </Text>
             </View>
             <View style={styles.personInfo}>
-                <Text style={styles.personName}>{person.name}</Text>
-                <Text style={styles.personDetail}>{person.plate || person.role}</Text>
+                <Text style={[styles.personName, { color: theme.text }]}>{person.name}</Text>
+                <Text style={[styles.personDetail, { color: theme.textSecondary }]}>{person.plate || person.role}</Text>
             </View>
             <TouchableOpacity style={styles.callBtn}>
                 <Ionicons name="call" size={20} color="white" />
             </TouchableOpacity>
         </View>
-    );
+        );
+    };
 
     const renderTimelineStep = (step: any, index: number, isLast: boolean) => {
         const isDone = step.status === 'done';
@@ -80,10 +90,10 @@ export default function SchoolBusScreen({ navigation }: any) {
         return (
             <View key={index} style={styles.timelineItem}>
                 <View style={styles.timelineLeft}>
-                    <View style={[styles.iconBox, { backgroundColor: isDone ? '#eafaf1' : isActive ? '#ebf5fb' : '#f8f9fa' }]}>
+                    <View style={[styles.iconBox, { backgroundColor: isDone ? (isDark ? '#064e3b' : '#eafaf1') : isActive ? (isDark ? '#1e3a8a' : '#ebf5fb') : (isDark ? '#1E293B' : '#f8f9fa') }]}>
                         <Ionicons name={iconName} size={20} color={iconColor} />
                     </View>
-                    {!isLast && <View style={[styles.line, isDone && styles.lineDone]} />}
+                    {!isLast && <View style={[styles.line, { backgroundColor: theme.border }, isDone && styles.lineDone]} />}
                 </View>
                 <View style={styles.timelineRight}>
                     <Text style={[styles.stepTitle, { color: textColor }]}>{step.title}</Text>
@@ -94,21 +104,21 @@ export default function SchoolBusScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Xe đưa đón</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Xe đưa đón</Text>
                 <View style={{ width: 44 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {/* Driver Info Section */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>THÔNG TIN TÀI XẾ</Text>
-                    <View style={styles.infoCard}>
+                    <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>THÔNG TIN TÀI XẾ</Text>
+                    <View style={[styles.infoCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
                         {renderDriverRow(busInfo?.driver, true)}
                         {renderDriverRow(busInfo?.monitor, false)}
                     </View>
@@ -116,9 +126,9 @@ export default function SchoolBusScreen({ navigation }: any) {
 
                 {/* Timeline Section */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>LỘ TRÌNH SÁNG NAY</Text>
-                    <View style={styles.timelineCard}>
-                        {busInfo?.schedule.map((step: any, index: number) => 
+                    <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>LỘ TRÌNH SÁNG NAY</Text>
+                    <View style={[styles.timelineCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
+                        {busInfo?.schedule?.map((step: any, index: number) => 
                             renderTimelineStep(step, index, index === busInfo.schedule.length - 1)
                         )}
                     </View>

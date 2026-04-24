@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { 
-    StyleSheet, 
-    Text, 
-    View, 
-    TextInput, 
-    TouchableOpacity, 
-    ActivityIndicator, 
-    Alert, 
-    KeyboardAvoidingView, 
+import {
+    StyleSheet,
+    Text,
+    View,
+    TextInput,
+    TouchableOpacity,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
     Platform,
     ScrollView,
     Dimensions
@@ -16,10 +16,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi } from '../services/api';
+import { authEvents } from '../services/authEvents';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
-export default function LoginScreen({ navigation, setIsLoggedIn }: any) {
+export default function LoginScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -33,22 +36,22 @@ export default function LoginScreen({ navigation, setIsLoggedIn }: any) {
 
         setLoading(true);
         console.log(`[Login] Đang gửi yêu cầu đăng nhập...`);
-        
+
         try {
-            const response = await authApi.login({ 
-                identifier: email.trim().toLowerCase(), 
-                password: password.trim() 
+            const response = await authApi.login({
+                identifier: email.trim().toLowerCase(),
+                password: password.trim()
             });
-            
+
             console.log('[Login-DEBUG] Full Response Data:', JSON.stringify(response.data, null, 2));
-            
+
             if (response.data.success) {
                 const { accessToken, refreshToken, user } = response.data.data;
                 await AsyncStorage.setItem('userToken', accessToken);
                 await AsyncStorage.setItem('refreshToken', refreshToken);
                 await AsyncStorage.setItem('user', JSON.stringify(user));
                 Alert.alert('Thành công', 'Đăng nhập thành công!');
-                setIsLoggedIn(true);
+                authEvents.emitLogin();
             }
         } catch (error: any) {
             console.log('[Login Error] Chi tiết lỗi:', error.message);
@@ -64,29 +67,30 @@ export default function LoginScreen({ navigation, setIsLoggedIn }: any) {
     };
 
     return (
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
+            style={[styles.container, { backgroundColor: theme.background }]}
         >
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
                     <LinearGradient
-                        colors={['#4c669f', '#3b5998', '#192f6a']}
+                        colors={isDark ? ['#334155', '#1E293B', '#0F172A'] : ['#4c669f', '#3b5998', '#192f6a']}
                         style={styles.logoContainer}
                     >
                         <Ionicons name="school" size={50} color="white" />
                     </LinearGradient>
-                    <Text style={styles.title}>iClever Connect</Text>
-                    <Text style={styles.subtitle}>Cổng thông tin giáo dục thông minh</Text>
+                    <Text style={[styles.title, { color: theme.text }]}>iClever Connect</Text>
+                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Cổng thông tin giáo dục thông minh</Text>
                 </View>
 
                 <View style={styles.form}>
-                    <Text style={styles.label}>Email</Text>
-                    <View style={styles.inputContainer}>
-                        <Ionicons name="mail-outline" size={20} color="#7f8c8d" style={styles.inputIcon} />
+                    <Text style={[styles.label, { color: theme.text }]}>Email</Text>
+                    <View style={[styles.inputContainer, { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: theme.border }]}>
+                        <Ionicons name="mail-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { color: theme.text }]}
                             placeholder="example@email.com"
+                            placeholderTextColor={theme.textSecondary}
                             value={email}
                             onChangeText={setEmail}
                             keyboardType="email-address"
@@ -94,31 +98,32 @@ export default function LoginScreen({ navigation, setIsLoggedIn }: any) {
                         />
                     </View>
 
-                    <Text style={styles.label}>Mật khẩu</Text>
-                    <View style={styles.inputContainer}>
-                        <Ionicons name="lock-closed-outline" size={20} color="#7f8c8d" style={styles.inputIcon} />
+                    <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
+                    <View style={[styles.inputContainer, { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: theme.border }]}>
+                        <Ionicons name="lock-closed-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { color: theme.text }]}
                             placeholder="********"
+                            placeholderTextColor={theme.textSecondary}
                             value={password}
                             onChangeText={setPassword}
                             secureTextEntry={!showPassword}
                         />
                         <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                            <Ionicons 
-                                name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                                size={20} 
-                                color="#7f8c8d" 
+                            <Ionicons
+                                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                                size={20}
+                                color={theme.textSecondary}
                             />
                         </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity style={styles.forgotPassword}>
-                        <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
+                        <Text style={[styles.forgotPasswordText, { color: theme.primary }]}>Quên mật khẩu?</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity 
-                        style={styles.buttonContainer} 
+                    <TouchableOpacity
+                        style={styles.buttonContainer}
                         onPress={handleLogin}
                         disabled={loading}
                     >
@@ -136,9 +141,9 @@ export default function LoginScreen({ navigation, setIsLoggedIn }: any) {
                         </LinearGradient>
                     </TouchableOpacity>
 
-                    <View style={styles.footerInfo}>
-                        <Ionicons name="information-circle-outline" size={16} color="#7f8c8d" />
-                        <Text style={styles.infoText}>
+                    <View style={[styles.footerInfo, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
+                        <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
+                        <Text style={[styles.infoText, { color: theme.textSecondary }]}>
                             Tài khoản do nhà trường cấp. Vui lòng liên hệ văn phòng nếu bạn chưa có tài khoản.
                         </Text>
                     </View>
@@ -207,10 +212,10 @@ const styles = StyleSheet.create({
         padding: 15,
         borderRadius: 10,
     },
-    infoText: { 
-        color: '#7f8c8d', 
-        fontSize: 12, 
-        marginLeft: 8, 
+    infoText: {
+        color: '#7f8c8d',
+        fontSize: 12,
+        marginLeft: 8,
         textAlign: 'center',
         lineHeight: 18,
         flex: 1

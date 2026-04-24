@@ -3,46 +3,59 @@ import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
     SafeAreaView, ActivityIndicator
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { tuitionApi } from '../services/api';
 import { getCurrentStudentId } from '../services/userHelper';
+import { useTheme } from '../context/ThemeContext';
 
 const formatMoney = (amount: number) =>
     amount.toLocaleString('vi-VN') + ' đ';
 
 export default function TuitionScreen({ navigation }: any) {
+    const { isDark, theme } = useTheme();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        (async () => {
-            try {
-                const studentId = await getCurrentStudentId();
-                if (!studentId) return;
-                const res = await tuitionApi.get(studentId);
-                setData(res.data.data);
-            } catch (err) {
-                console.error('TuitionScreen error:', err);
-            } finally {
+    const loadInitialData = async () => {
+        const cacheKey = 'tuition_cache';
+        try {
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                setData(JSON.parse(cached));
                 setLoading(false);
             }
-        })();
+
+            const studentId = await getCurrentStudentId();
+            if (!studentId) {
+                setLoading(false);
+                return;
+            }
+
+            const res = await tuitionApi.get(studentId);
+            const tuitionData = res.data.data;
+            setData(tuitionData);
+            AsyncStorage.setItem(cacheKey, JSON.stringify(tuitionData));
+        } catch (err) {
+            console.error('TuitionScreen error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadInitialData();
     }, []);
 
-
-    if (loading || !data) {
-        return <View style={styles.center}><ActivityIndicator size="large" color="#e97e37" /></View>;
-    }
-
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#2c3e50" />
+                    <Ionicons name="chevron-back" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Học phí</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Học phí</Text>
                 <View style={{ width: 40 }} />
             </View>
 
@@ -55,47 +68,47 @@ export default function TuitionScreen({ navigation }: any) {
                     style={styles.banner}
                 >
                     <Text style={styles.bannerLabel}>TỔNG TIỀN CẦN ĐÓNG</Text>
-                    <Text style={styles.bannerAmount}>{formatMoney(data.totalDue)}</Text>
-                    <Text style={styles.bannerDeadline}>Hạn chốt: {data.deadline}</Text>
+                    <Text style={styles.bannerAmount}>{formatMoney(data?.totalDue || 0)}</Text>
+                    <Text style={styles.bannerDeadline}>Hạn chốt: {data?.deadline || '--'}</Text>
                 </LinearGradient>
 
                 {/* Section title */}
                 <View style={styles.sectionRow}>
-                    <Ionicons name="card-outline" size={20} color="#3b5998" />
-                    <Text style={styles.sectionTitle}>Danh sách khoản thu</Text>
+                    <Ionicons name="card-outline" size={20} color={theme.primary} />
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Danh sách khoản thu</Text>
                 </View>
 
                 {/* Items */}
                 <View style={styles.listContainer}>
-                    {data.items.map((item: any, i: number) => (
+                    {(data?.items || []).map((item: any, i: number) => (
                         <View
                             key={item.id}
-                            style={[styles.feeCard, i === data.items.length - 1 && { marginBottom: 0 }]}
+                            style={[styles.feeCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }, i === (data?.items?.length || 0) - 1 && { marginBottom: 0 }]}
                         >
                             {/* Top row: name + amount */}
                             <View style={styles.feeTopRow}>
-                                <Text style={styles.feeName}>{item.name}</Text>
-                                <Text style={styles.feeAmount}>{formatMoney(item.amount)}</Text>
+                                <Text style={[styles.feeName, { color: theme.text }]}>{item.name}</Text>
+                                <Text style={[styles.feeAmount, { color: theme.primary }]}>{formatMoney(item.amount)}</Text>
                             </View>
 
                             {/* Period pill */}
-                            <View style={styles.periodPill}>
-                                <Text style={styles.periodText}>{item.period}</Text>
+                            <View style={[styles.periodPill, { backgroundColor: isDark ? '#1E293B' : '#f1f2f6' }]}>
+                                <Text style={[styles.periodText, { color: theme.textSecondary }]}>{item.period}</Text>
                             </View>
 
                             {/* Divider */}
-                            <View style={styles.divider} />
+                            <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
                             {/* Bottom row: due date + status */}
                             <View style={styles.feeBottomRow}>
-                                <Text style={styles.dueDateText}>Hạn: {item.dueDate}</Text>
+                                <Text style={[styles.dueDateText, { color: theme.textSecondary }]}>Hạn: {item.dueDate}</Text>
                                 {item.status === 'paid' ? (
-                                    <View style={styles.badgePaid}>
+                                    <View style={[styles.badgePaid, { backgroundColor: isDark ? '#064e3b' : '#e8f5e9' }]}>
                                         <Ionicons name="checkmark-circle-outline" size={14} color="#27ae60" />
                                         <Text style={styles.badgePaidText}>Đã đóng</Text>
                                     </View>
                                 ) : (
-                                    <View style={styles.badgeUnpaid}>
+                                    <View style={[styles.badgeUnpaid, { backgroundColor: isDark ? '#451a03' : '#fff3e0', borderColor: isDark ? '#92400e' : '#f9a03f' }]}>
                                         <Ionicons name="alert-circle-outline" size={14} color="#e97e37" />
                                         <Text style={styles.badgeUnpaidText}>Chưa đóng</Text>
                                     </View>
