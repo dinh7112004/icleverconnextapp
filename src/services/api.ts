@@ -9,9 +9,9 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Configuration ──────────────────────────────────────────────
-// const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1';
+const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1';
 // const BASE_URL = 'http://localhost:3000/api/v1'; // Dùng cho Simulator
-const BASE_URL = 'http://192.168.1.181:3000/api/v1'; // Đổi đuôi 180 thành 181
+// const BASE_URL = 'http://192.168.1.181:3000/api/v1'; // Đổi đuôi 180 thành 181
 
 
 // ─── Axios Instance ─────────────────────────────────────────────
