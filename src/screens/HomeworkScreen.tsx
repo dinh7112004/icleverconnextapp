@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions, RefreshControl, Alert, TextInput, Modal, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions, RefreshControl, Alert, TextInput, Modal, LayoutAnimation, Platform, UIManager, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { academicApi, uploadApi } from '../services/api';
@@ -390,78 +390,89 @@ export default function HomeworkScreen({ navigation }: any) {
 
             {/* Submission Modal */}
             <Modal visible={submitModalVisible} transparent animationType="slide">
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
-                        <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, { color: theme.text }]}>Nộp bài tập</Text>
-                            <TouchableOpacity onPress={() => {
-                                setSubmitModalVisible(false);
-                                setAttachments([]);
-                                setSubmitText('');
-                            }}>
-                                <Ionicons name="close" size={24} color={theme.text} />
-                            </TouchableOpacity>
-                        </View>
-
-                        <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Môn học / Bài tập</Text>
-                        <View style={[styles.hwInfoBox, { backgroundColor: isDark ? '#1e3a8a' : '#f8faff' }]}>
-                            <Text style={[styles.hwInfoText, { color: isDark ? '#93c5fd' : '#1e40af' }]}>
-                                {selectedHomework?.subject.name} - {selectedHomework?.title}
-                            </Text>
-                        </View>
-
-                        <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Nội dung bài làm</Text>
-                        <TextInput
-                            style={[styles.submitInput, { backgroundColor: isDark ? '#2D3748' : '#f8fafc', color: theme.text, borderColor: theme.border }]}
-                            placeholder="Nhập nội dung trả lời..."
-                            placeholderTextColor={theme.textSecondary}
-                            multiline
-                            textAlignVertical="top"
-                            value={submitText}
-                            onChangeText={setSubmitText}
-                        />
-
-                        <TouchableOpacity 
-                            style={[styles.uploadArea, { backgroundColor: isDark ? '#2D3748' : '#f8fafc', borderColor: theme.border }]} 
-                            onPress={() => {
-                                Alert.alert(
-                                    "Đính kèm tệp",
-                                    "Chọn loại tệp muốn đính kèm",
-                                    [
-                                        { text: "Ảnh", onPress: handlePickImage },
-                                        { text: "Tệp tin", onPress: handlePickDocument },
-                                        { text: "Hủy", style: "cancel" }
-                                    ]
-                                );
-                            }}
-                        >
-                            <View style={[styles.uploadIconCircle, { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}>
-                                <Ionicons name="cloud-upload-outline" size={32} color={isDark ? '#60A5FA' : '#3b82f6'} />
-                            </View>
-                            <Text style={[styles.uploadText, { color: theme.text }]}>Chạm để tải ảnh bài làm</Text>
-                            <Text style={[styles.uploadSubText, { color: theme.textSecondary }]}>Hỗ trợ JPG, PNG, PDF</Text>
-                        </TouchableOpacity>
-
-                        {attachments.length > 0 && (
-                            <ScrollView style={styles.attachmentsList} horizontal showsHorizontalScrollIndicator={false}>
-                                {attachments.map((file, idx) => (
-                                    <View key={idx} style={[styles.attachmentBadge, { backgroundColor: isDark ? '#2D3748' : '#f1f5f9' }]}>
-                                        <Ionicons name={file.type === 'image' ? "image" : "document"} size={16} color={theme.primary} />
-                                        <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>{file.name}</Text>
-                                        <TouchableOpacity onPress={() => removeAttachment(idx)}>
-                                            <Ionicons name="close-circle" size={18} color="#ef4444" />
+                <KeyboardAvoidingView 
+                    style={{ flex: 1 }} 
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <View style={styles.modalOverlay}>
+                            <TouchableWithoutFeedback>
+                                <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
+                                    <View style={styles.modalHeader}>
+                                        <Text style={[styles.modalTitle, { color: theme.text }]}>Nộp bài tập</Text>
+                                        <TouchableOpacity onPress={() => {
+                                            setSubmitModalVisible(false);
+                                            setAttachments([]);
+                                            setSubmitText('');
+                                        }}>
+                                            <Ionicons name="close" size={24} color={theme.text} />
                                         </TouchableOpacity>
                                     </View>
-                                ))}
-                            </ScrollView>
-                        )}
 
-                        <TouchableOpacity style={[styles.submitBtnPremium, { backgroundColor: theme.primary }]} onPress={handleSubmit}>
-                            <Ionicons name="checkmark-done-circle-outline" size={24} color="white" style={{ marginRight: 10 }} />
-                            <Text style={styles.submitBtnTextPremium}>Hoàn thành nộp bài</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                                        <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Môn học / Bài tập</Text>
+                                        <View style={[styles.hwInfoBox, { backgroundColor: isDark ? '#1e3a8a' : '#f8faff' }]}>
+                                            <Text style={[styles.hwInfoText, { color: isDark ? '#93c5fd' : '#1e40af' }]}>
+                                                {selectedHomework?.subject.name} - {selectedHomework?.title}
+                                            </Text>
+                                        </View>
+
+                                        <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Nội dung bài làm</Text>
+                                        <TextInput
+                                            style={[styles.submitInput, { backgroundColor: isDark ? '#2D3748' : '#f8fafc', color: theme.text, borderColor: theme.border }]}
+                                            placeholder="Nhập nội dung trả lời..."
+                                            placeholderTextColor={theme.textSecondary}
+                                            multiline
+                                            textAlignVertical="top"
+                                            value={submitText}
+                                            onChangeText={setSubmitText}
+                                        />
+
+                                        <TouchableOpacity 
+                                            style={[styles.uploadArea, { backgroundColor: isDark ? '#2D3748' : '#f8fafc', borderColor: theme.border }]} 
+                                            onPress={() => {
+                                                Alert.alert(
+                                                    "Đính kèm tệp",
+                                                    "Chọn loại tệp muốn đính kèm",
+                                                    [
+                                                        { text: "Ảnh", onPress: handlePickImage },
+                                                        { text: "Tệp tin", onPress: handlePickDocument },
+                                                        { text: "Hủy", style: "cancel" }
+                                                    ]
+                                                );
+                                            }}
+                                        >
+                                            <View style={[styles.uploadIconCircle, { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}>
+                                                <Ionicons name="cloud-upload-outline" size={32} color={isDark ? '#60A5FA' : '#3b82f6'} />
+                                            </View>
+                                            <Text style={[styles.uploadText, { color: theme.text }]}>Chạm để tải ảnh bài làm</Text>
+                                            <Text style={[styles.uploadSubText, { color: theme.textSecondary }]}>Hỗ trợ JPG, PNG, PDF</Text>
+                                        </TouchableOpacity>
+
+                                        {attachments.length > 0 && (
+                                            <ScrollView style={styles.attachmentsList} horizontal showsHorizontalScrollIndicator={false}>
+                                                {attachments.map((file, idx) => (
+                                                    <View key={idx} style={[styles.attachmentBadge, { backgroundColor: isDark ? '#2D3748' : '#f1f5f9' }]}>
+                                                        <Ionicons name={file.type === 'image' ? "image" : "document"} size={16} color={theme.primary} />
+                                                        <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>{file.name}</Text>
+                                                        <TouchableOpacity onPress={() => removeAttachment(idx)}>
+                                                            <Ionicons name="close-circle" size={18} color="#ef4444" />
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                ))}
+                                            </ScrollView>
+                                        )}
+
+                                        <TouchableOpacity style={[styles.submitBtnPremium, { backgroundColor: theme.primary }]} onPress={handleSubmit}>
+                                            <Ionicons name="checkmark-done-circle-outline" size={24} color="white" style={{ marginRight: 10 }} />
+                                            <Text style={styles.submitBtnTextPremium}>Hoàn thành nộp bài</Text>
+                                        </TouchableOpacity>
+                                    </ScrollView>
+                                </View>
+                            </TouchableWithoutFeedback>
+                        </View>
+                    </TouchableWithoutFeedback>
+                </KeyboardAvoidingView>
             </Modal>
         </SafeAreaView>
     );

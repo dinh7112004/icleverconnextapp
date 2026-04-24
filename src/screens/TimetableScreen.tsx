@@ -185,17 +185,35 @@ export default function TimetableScreen({ navigation }: any) {
                             <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
                         </View>
                         {afternoonLessons.map((lesson: any) => {
-                            const color = SUBJECT_COLORS[lesson.subject?.name] || theme.primary;
+                            const periodNum = lesson.period;
+                            const color = SUBJECT_COLORS[lesson.subjectName || lesson.subject?.name] || theme.primary;
                             return (
-                                <View key={`afternoon-${lesson.period}`} style={styles.afternoonItem}>
-                                    <View style={[styles.lessonCard, { backgroundColor: theme.surface, borderColor: isDark ? '#334155' : '#f1f5f9', marginLeft: 0 }]}>
+                                <View key={`afternoon-${periodNum}`} style={styles.lessonItem}>
+                                    <View style={styles.timelineContainer}>
+                                        <View style={[styles.timelineCircle, { borderColor: color, backgroundColor: theme.surface }]}>
+                                            <Text style={[styles.timelineIndex, { color: color }]}>{periodNum}</Text>
+                                        </View>
+                                        {/* Don't show connecting line for the very last lesson of the day to make it look cleaner */}
+                                        <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
+                                    </View>
+                                    <View style={[styles.lessonCard, { backgroundColor: theme.surface, borderColor: isDark ? '#334155' : '#f1f5f9' }]}>
                                         <View style={styles.lessonMain}>
                                             <View style={{ flex: 1 }}>
-                                                <Text style={[styles.subjectName, { color: theme.text }]}>{lesson?.subject?.name}</Text>
+                                                <Text style={[styles.subjectName, { color: theme.text }]}>
+                                                    {lesson?.subjectName || lesson?.subject?.name}
+                                                </Text>
                                                 <View style={styles.teacherRow}>
                                                     <Ionicons name="person-outline" size={14} color={theme.textSecondary} />
-                                                    <Text style={[styles.teacherName, { color: theme.textSecondary }]}>GV: {lesson?.teacher?.fullName}</Text>
+                                                    <Text style={[styles.teacherName, { color: theme.textSecondary }]}>
+                                                        GV: {lesson?.teacherName || lesson?.teacher?.fullName || '---'}
+                                                    </Text>
                                                 </View>
+                                            </View>
+                                            <View style={[styles.timeBadge, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border }]}>
+                                                <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
+                                                <Text style={[styles.timeText, { color: theme.textSecondary }]}>
+                                                    {lesson?.startTime || '--:--'} - {lesson?.endTime || '--:--'}
+                                                </Text>
                                             </View>
                                         </View>
                                     </View>

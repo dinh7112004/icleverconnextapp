@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
     SafeAreaView, ActivityIndicator, TextInput, Alert, Dimensions,
-    Modal, Platform, Image, Linking, RefreshControl
+    Modal, Platform, Image, Linking, RefreshControl,
+    KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -11,7 +12,6 @@ import { getCurrentUser } from '../services/userHelper';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import moment from 'moment';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CACHE_KEY = 'leave_history_cache';
@@ -94,6 +94,30 @@ export default function LeaveRequestScreen({ navigation }: any) {
             Alert.alert(t('common.error'), t('homework.missingData'));
             return;
         }
+
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        
+        if (leaveType === 'day') {
+            if (fromDate < todayStr) {
+                Alert.alert('Lỗi', 'Không thể xin nghỉ vào ngày trong quá khứ.');
+                return;
+            }
+            if (toDate && toDate < fromDate) {
+                Alert.alert('Lỗi', 'Đến ngày không được nhỏ hơn Từ ngày.');
+                return;
+            }
+        } else {
+            if (singleDate < todayStr) {
+                Alert.alert('Lỗi', 'Không thể xin nghỉ vào ngày trong quá khứ.');
+                return;
+            }
+            if (selectedPeriods.length === 0) {
+                Alert.alert('Lỗi', 'Vui lòng chọn ít nhất 1 tiết nghỉ.');
+                return;
+            }
+        }
+
         setSubmitting(true);
         try {
             const user = await getCurrentUser();
@@ -173,6 +197,9 @@ export default function LeaveRequestScreen({ navigation }: any) {
         for (let i = 1; i <= daysInMonth; i++) days.push(i);
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
         return (
             <Modal transparent visible={showCalendar} animationType="fade">
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCalendar(false)}>
@@ -186,11 +213,18 @@ export default function LeaveRequestScreen({ navigation }: any) {
                         </View>
                         <View style={styles.weekdaysRow}>{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <Text key={i} style={styles.weekdayText}>{d}</Text>)}</View>
                         <View style={styles.daysGrid}>
-                            {days.map((d, i) => (
-                                <TouchableOpacity key={i} style={[styles.dayCell, { width: (SCREEN_WIDTH * 0.85 - 40) / 7 }]} disabled={!d} onPress={() => d && handleDateSelect(d, month, year)}>
-                                    <Text style={[styles.dayText, { color: theme.text }, !d && { color: 'transparent' }]}>{d}</Text>
-                                </TouchableOpacity>
-                            ))}
+                            {days.map((d, i) => {
+                                const isPast = d ? `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` < todayStr : false;
+                                return (
+                                    <TouchableOpacity 
+                                        key={i} 
+                                        style={[styles.dayCell, { width: (SCREEN_WIDTH * 0.85 - 40) / 7 }, isPast && { opacity: 0.2 }]} 
+                                        disabled={!d || isPast} 
+                                        onPress={() => d && !isPast && handleDateSelect(d, month, year)}>
+                                        <Text style={[styles.dayText, { color: theme.text }, !d && { color: 'transparent' }]}>{d}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </View>
                     </View>
                 </TouchableOpacity>
@@ -214,60 +248,141 @@ export default function LeaveRequestScreen({ navigation }: any) {
             </View>
 
             {screen === 'form' ? (
-                <View style={styles.formOverlay}>
-                    <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
-                        <View style={[styles.formCard, { backgroundColor: theme.surface }]}>
+                <KeyboardAvoidingView 
+                    style={styles.formOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <ScrollView 
+                            contentContainerStyle={styles.formScroll} 
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <TouchableWithoutFeedback>
+                                <View style={[styles.formCard, { backgroundColor: theme.surface }]}>
                             <Text style={[styles.cardFormTitle, { color: theme.text }]}>Tạo đơn xin nghỉ</Text>
                             
                             <View style={[styles.tabContainer, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
                                 <TouchableOpacity 
-                                    style={[styles.tabBtn, leaveType === 'day' && styles.tabBtnActive]} 
+                                    style={[styles.tabBtn, leaveType === 'day' && [styles.tabBtnActive, { backgroundColor: isDark ? '#334155' : 'white' }]]} 
                                     onPress={() => setLeaveType('day')}
                                 >
-                                    <Ionicons name="calendar-outline" size={18} color={leaveType === 'day' ? '#2b58de' : '#64748b'} />
-                                    <Text style={[styles.tabBtnText, { color: leaveType === 'day' ? '#2b58de' : '#64748b' }]}>Nghỉ theo ngày</Text>
+                                    <Ionicons name="calendar-outline" size={18} color={leaveType === 'day' ? '#2b58de' : (isDark ? '#94a3b8' : '#64748b')} />
+                                    <Text style={[styles.tabBtnText, { color: leaveType === 'day' ? '#2b58de' : (isDark ? '#94a3b8' : '#64748b') }]}>Nghỉ theo ngày</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity 
-                                    style={[styles.tabBtn, leaveType === 'period' && styles.tabBtnActive]} 
+                                    style={[styles.tabBtn, leaveType === 'period' && [styles.tabBtnActive, { backgroundColor: isDark ? '#334155' : 'white' }]]} 
                                     onPress={() => setLeaveType('period')}
                                 >
-                                    <Ionicons name="time-outline" size={18} color={leaveType === 'period' ? '#2b58de' : '#64748b'} />
-                                    <Text style={[styles.tabBtnText, { color: leaveType === 'period' ? '#2b58de' : '#64748b' }]}>Nghỉ theo tiết</Text>
+                                    <Ionicons name="time-outline" size={18} color={leaveType === 'period' ? '#2b58de' : (isDark ? '#94a3b8' : '#64748b')} />
+                                    <Text style={[styles.tabBtnText, { color: leaveType === 'period' ? '#2b58de' : (isDark ? '#94a3b8' : '#64748b') }]}>Nghỉ theo tiết</Text>
                                 </TouchableOpacity>
                             </View>
 
-                            <View style={styles.dateSection}>
-                                <View style={styles.dateCol}>
-                                    <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Từ ngày</Text>
+                            {leaveType === 'day' ? (
+                                <View style={styles.dateSection}>
+                                    <View style={styles.dateCol}>
+                                        <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Từ ngày</Text>
+                                        <TouchableOpacity 
+                                            style={[styles.datePickerBtn, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border }]}
+                                            onPress={() => { setPickingFor('from'); setShowCalendar(true); }}
+                                        >
+                                            <Text style={[styles.dateValue, { color: fromDate ? theme.text : theme.textSecondary }]}>
+                                                {fromDate ? formatDateDisplay(fromDate) : 'dd/mm/yyyy'}
+                                            </Text>
+                                            <Ionicons name="calendar-outline" size={18} color={theme.textSecondary} />
+                                        </TouchableOpacity>
+                                    </View>
+                                    <View style={styles.dateCol}>
+                                        <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Đến ngày</Text>
+                                        <TouchableOpacity 
+                                            style={[styles.datePickerBtn, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border }]}
+                                            onPress={() => { setPickingFor('to'); setShowCalendar(true); }}
+                                        >
+                                            <Text style={[styles.dateValue, { color: toDate ? theme.text : theme.textSecondary }]}>
+                                                {toDate ? formatDateDisplay(toDate) : 'dd/mm/yyyy'}
+                                            </Text>
+                                            <Ionicons name="calendar-outline" size={18} color={theme.textSecondary} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ) : (
+                                <View>
+                                    <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Chọn ngày nghỉ</Text>
                                     <TouchableOpacity 
                                         style={[styles.datePickerBtn, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border }]}
-                                        onPress={() => { setPickingFor('from'); setShowCalendar(true); }}
+                                        onPress={() => { setPickingFor('single'); setShowCalendar(true); }}
                                     >
-                                        <Text style={[styles.dateValue, { color: fromDate ? theme.text : theme.textSecondary }]}>
-                                            {fromDate ? formatDateDisplay(fromDate) : 'dd/mm/yyyy'}
+                                        <Text style={[styles.dateValue, { color: singleDate ? theme.text : theme.textSecondary }]}>
+                                            {singleDate ? formatDateDisplay(singleDate) : 'dd/mm/yyyy'}
                                         </Text>
                                         <Ionicons name="calendar-outline" size={18} color={theme.textSecondary} />
                                     </TouchableOpacity>
+
+                                    <View style={[styles.periodBox, { backgroundColor: isDark ? '#1e293b' : '#f8faff', borderColor: isDark ? '#334155' : '#e2e8f0' }]}>
+                                        <View style={styles.periodHeaderRow}>
+                                            <Ionicons name="time-outline" size={16} color="#2b58de" />
+                                            <Text style={styles.periodHeaderTitle}>Chọn các tiết nghỉ trong ngày</Text>
+                                        </View>
+                                        
+                                        <Text style={[styles.sessionLabel, { color: theme.textSecondary }]}>BUỔI SÁNG</Text>
+                                        <View style={styles.periodGrid}>
+                                            {[1, 2, 3, 4, 5].map(p => (
+                                                <TouchableOpacity 
+                                                    key={`p-${p}`}
+                                                    style={[
+                                                        styles.periodBtn, 
+                                                        { backgroundColor: isDark ? '#334155' : '#fff', borderColor: theme.border },
+                                                        selectedPeriods.includes(p) && styles.periodBtnActive
+                                                    ]}
+                                                    onPress={() => {
+                                                        setSelectedPeriods(prev => 
+                                                            prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                                                        );
+                                                    }}
+                                                >
+                                                    <Text style={[
+                                                        styles.periodBtnText, 
+                                                        { color: theme.textSecondary },
+                                                        selectedPeriods.includes(p) && styles.periodBtnTextActive
+                                                    ]}>Tiết {p}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        <Text style={[styles.sessionLabel, { color: theme.textSecondary, marginTop: 15 }]}>BUỔI CHIỀU</Text>
+                                        <View style={styles.periodGrid}>
+                                            {[6, 7, 8, 9, 10].map(p => (
+                                                <TouchableOpacity 
+                                                    key={`p-${p}`}
+                                                    style={[
+                                                        styles.periodBtn, 
+                                                        { backgroundColor: isDark ? '#334155' : '#fff', borderColor: theme.border },
+                                                        selectedPeriods.includes(p) && styles.periodBtnActive
+                                                    ]}
+                                                    onPress={() => {
+                                                        setSelectedPeriods(prev => 
+                                                            prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                                                        );
+                                                    }}
+                                                >
+                                                    <Text style={[
+                                                        styles.periodBtnText, 
+                                                        { color: theme.textSecondary },
+                                                        selectedPeriods.includes(p) && styles.periodBtnTextActive
+                                                    ]}>Tiết {p}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    </View>
                                 </View>
-                                <View style={styles.dateCol}>
-                                    <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Đến ngày</Text>
-                                    <TouchableOpacity 
-                                        style={[styles.datePickerBtn, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border }]}
-                                        onPress={() => { setPickingFor('to'); setShowCalendar(true); }}
-                                    >
-                                        <Text style={[styles.dateValue, { color: toDate ? formatDateDisplay(toDate) : theme.textSecondary }]}>
-                                            {toDate ? formatDateDisplay(toDate) : 'dd/mm/yyyy'}
-                                        </Text>
-                                        <Ionicons name="calendar-outline" size={18} color={theme.textSecondary} />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
+                            )}
 
                             <Text style={[styles.inputLabel, { color: theme.textSecondary, marginTop: 20 }]}>Lý do xin nghỉ</Text>
                             <TextInput 
                                 style={[styles.reasonInput, { backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: theme.border, color: theme.text }]}
                                 placeholder="Nhập lý do con nghỉ học..."
-                                placeholderTextColor={theme.textSecondary}
+                                placeholderTextColor={isDark ? '#94a3b8' : theme.textSecondary}
                                 multiline
                                 value={reason}
                                 onChangeText={setReason}
@@ -297,8 +412,8 @@ export default function LeaveRequestScreen({ navigation }: any) {
                             </TouchableOpacity>
 
                             <View style={styles.formFooter}>
-                                <TouchableOpacity style={[styles.btnAction, styles.btnCancel]} onPress={() => setScreen('list')}>
-                                    <Text style={styles.btnCancelText}>Hủy</Text>
+                                <TouchableOpacity style={[styles.btnAction, styles.btnCancel, { backgroundColor: isDark ? '#334155' : '#f1f5f9' }]} onPress={() => setScreen('list')}>
+                                    <Text style={[styles.btnCancelText, { color: isDark ? '#cbd5e1' : '#64748b' }]}>Hủy</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity 
                                     style={[styles.btnAction, styles.btnSubmit, { backgroundColor: '#2b58de' }]} 
@@ -308,9 +423,11 @@ export default function LeaveRequestScreen({ navigation }: any) {
                                     {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.btnSubmitText}>Gửi đơn</Text>}
                                 </TouchableOpacity>
                             </View>
-                        </View>
-                    </ScrollView>
-                </View>
+                                </View>
+                            </TouchableWithoutFeedback>
+                        </ScrollView>
+                    </TouchableWithoutFeedback>
+                </KeyboardAvoidingView>
             ) : (
                 <View style={{ flex: 1 }}>
                     <View style={styles.sectionHeader}>
@@ -331,23 +448,29 @@ export default function LeaveRequestScreen({ navigation }: any) {
                             requests.map(item => {
                             const s = statusMap[item.status] || statusMap.pending;
                             
-                            const getValidDate = (d: any) => {
-                                const m = moment(d);
-                                return m.isValid() ? m : null;
+                            const getValidDateStr = (d: any) => {
+                                if (!d) return null;
+                                const dt = new Date(d);
+                                return isNaN(dt.getTime()) ? null : `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
+                            };
+                            const getValidDateObj = (d: any) => {
+                                if (!d) return null;
+                                const dt = new Date(d);
+                                return isNaN(dt.getTime()) ? null : dt;
                             };
 
-                            const cDate = getValidDate(item.createdAt) || getValidDate(item.fromDate) || moment();
-                            const createdDate = cDate.format('D/M/YYYY');
+                            const createdDate = getValidDateStr(item.createdAt) || getValidDateStr(item.fromDate) || getValidDateStr(new Date());
                             
                             let displayDate = '';
                             if (item.type === 'day') {
-                                const from = getValidDate(item.fromDate) || moment();
-                                const to = getValidDate(item.toDate) || from;
-                                displayDate = from.format('D/M') === to.format('D/M') 
-                                    ? from.format('D/M') 
-                                    : `${from.format('D/M')} - ${to.format('D/M')}`;
+                                const fromD = getValidDateObj(item.fromDate) || new Date();
+                                const toD = getValidDateObj(item.toDate) || fromD;
+                                const fromStr = `${fromD.getDate()}/${fromD.getMonth() + 1}`;
+                                const toStr = `${toD.getDate()}/${toD.getMonth() + 1}`;
+                                displayDate = fromStr === toStr ? fromStr : `${fromStr} - ${toStr}`;
                             } else {
-                                displayDate = (getValidDate(item.singleDate) || moment()).format('D/M');
+                                const singleD = getValidDateObj(item.singleDate) || new Date();
+                                displayDate = `${singleD.getDate()}/${singleD.getMonth() + 1}`;
                             }
                                 
                             return (
@@ -476,4 +599,52 @@ const styles = StyleSheet.create({
     daysGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
     dayCell: { height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 20, marginBottom: 4 },
     dayText: { fontSize: 14, fontWeight: '600' },
+
+    // Period Selection UI
+    periodBox: {
+        marginTop: 20,
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    periodHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    periodHeaderTitle: {
+        fontSize: 13,
+        fontWeight: 'bold',
+        color: '#2b58de',
+        marginLeft: 6,
+    },
+    sessionLabel: {
+        fontSize: 11,
+        fontWeight: '800',
+        marginBottom: 10,
+    },
+    periodGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    periodBtn: {
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 8,
+        borderWidth: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    periodBtnActive: {
+        backgroundColor: '#fff',
+        borderColor: '#2b58de',
+    },
+    periodBtnText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    periodBtnTextActive: {
+        color: '#2b58de',
+    },
 });

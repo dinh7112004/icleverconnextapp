@@ -56,10 +56,17 @@ apiClient.interceptors.response.use(
 
 // ─── Uploads ─────────────────────────────────────────────────────
 export const uploadApi = {
-    post: (data: FormData, folder: string = 'others') =>
-        apiClient.post(`/uploads?folder=${folder}`, data, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        }),
+    post: async (data: FormData, folder: string = 'others') => {
+        const token = await AsyncStorage.getItem('userToken');
+        const response = await fetch(`${BASE_URL}/uploads?folder=${folder}`, {
+            method: 'POST',
+            body: data,
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'Upload failed');
+        return { data: result };
+    }
 };
 
 // ─── Auth ────────────────────────────────────────────────────────

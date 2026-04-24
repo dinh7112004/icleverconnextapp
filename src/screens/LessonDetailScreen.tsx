@@ -327,7 +327,12 @@ export default function LessonDetailScreen({ route, navigation }: any) {
                         )}
                         <View style={styles.contentSection}>
                             <Text style={[styles.lessonDetailTitle, { color: theme.text }]}>{lesson?.title}</Text>
-                            <RenderHtml contentWidth={width - 40} source={{ html: lesson?.description || '' }} tagsStyles={{ p: { color: theme.text }, li: { color: theme.text } }} />
+                            <RenderHtml 
+                                contentWidth={width - 40} 
+                                source={{ html: lesson?.description || '' }} 
+                                baseStyle={{ color: theme.text, fontSize: 15, lineHeight: 22 }}
+                                tagsStyles={{ p: { color: theme.text }, li: { color: theme.text }, span: { color: theme.text }, div: { color: theme.text } }} 
+                            />
                             <TouchableOpacity style={[styles.startPracticeBtnLarge, { backgroundColor: theme.primary }]} onPress={() => setActiveTab('quiz')}><Text style={styles.startPracticeTextLarge}>Làm bài tập</Text></TouchableOpacity>
                         </View>
                     </View>
