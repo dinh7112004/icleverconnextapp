@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi } from '../services/api';
 import { authEvents } from '../services/authEvents';
 import { useTheme } from '../context/ThemeContext';
+import * as biometricService from '../services/biometricService';
 
 const { width } = Dimensions.get('window');
 
@@ -27,9 +28,40 @@ export default function LoginScreen({ navigation }: any) {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [biometricSupported, setBiometricSupported] = useState(false);
+    const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
 
-    const handleLogin = async () => {
-        if (!email || !password) {
+    React.useEffect(() => {
+        const initBiometrics = async () => {
+            const isSupported = await biometricService.checkBiometricSupport();
+            setBiometricSupported(isSupported);
+            if (isSupported) {
+                const creds = await biometricService.getCredentials();
+                setHasSavedCredentials(!!creds);
+            }
+        };
+        initBiometrics();
+    }, []);
+
+    const handleBiometricLogin = async () => {
+        const success = await biometricService.authenticateWithBiometrics();
+        if (success) {
+            const creds = await biometricService.getCredentials();
+            if (creds && creds.username && creds.password) {
+                setEmail(creds.username);
+                setPassword(creds.password);
+                // Thực hiện đăng nhập ngay
+                performLogin(creds.username, creds.password);
+            }
+        }
+    };
+
+    const handleLogin = () => {
+        performLogin(email, password);
+    };
+
+    const performLogin = async (loginEmail: string, loginPass: string) => {
+        if (!loginEmail || !loginPass) {
             Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ email và mật khẩu');
             return;
         }
@@ -39,8 +71,8 @@ export default function LoginScreen({ navigation }: any) {
 
         try {
             const response = await authApi.login({
-                identifier: email.trim().toLowerCase(),
-                password: password.trim()
+                identifier: loginEmail.trim().toLowerCase(),
+                password: loginPass.trim()
             });
 
             console.log('[Login-DEBUG] Full Response Data:', JSON.stringify(response.data, null, 2));
@@ -50,6 +82,15 @@ export default function LoginScreen({ navigation }: any) {
                 await AsyncStorage.setItem('userToken', accessToken);
                 await AsyncStorage.setItem('refreshToken', refreshToken);
                 await AsyncStorage.setItem('user', JSON.stringify(user));
+                
+                // Lưu thông tin sinh trắc học nếu thiết bị hỗ trợ
+                if (biometricSupported) {
+                    await biometricService.saveCredentials({
+                        username: loginEmail.trim().toLowerCase(),
+                        password: loginPass.trim()
+                    });
+                }
+                
                 Alert.alert('Thành công', 'Đăng nhập thành công!');
                 authEvents.emitLogin();
             }
@@ -141,6 +182,13 @@ export default function LoginScreen({ navigation }: any) {
                         </LinearGradient>
                     </TouchableOpacity>
 
+                    {biometricSupported && hasSavedCredentials && (
+                        <TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>
+                            <Ionicons name="finger-print" size={32} color={theme.primary} />
+                            <Text style={[styles.biometricText, { color: theme.primary }]}>Đăng nhập bằng Sinh trắc học</Text>
+                        </TouchableOpacity>
+                    )}
+
                     <View style={[styles.footerInfo, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
                         <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
                         <Text style={[styles.infoText, { color: theme.textSecondary }]}>
@@ -220,4 +268,15 @@ const styles = StyleSheet.create({
         lineHeight: 18,
         flex: 1
     },
+    biometricButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 20,
+    },
+    biometricText: {
+        marginLeft: 10,
+        fontSize: 15,
+        fontWeight: '600'
+    }
 });

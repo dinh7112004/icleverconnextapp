@@ -347,5 +347,18 @@ export const scheduleApi = {
         }),
 };
 
+// ─── AI Assistant ────────────────────────────────────────────────
+export const aiApi = {
+    // Lấy lịch sử chat
+    getHistory: (limit: number = 20) =>
+        apiClient.get('/ai/history', { params: { limit } }),
+
+    // Hỏi AI (không streaming)
+    askOnce: (prompt: string) =>
+        apiClient.post('/ai/ask/once', { prompt }),
+
+    // Lưu ý: với streaming, chúng ta sẽ gọi fetch hoặc EventSource trực tiếp trong UI component
+};
+
 // ─── Export default instance ─────────────────────────────────────
 export default apiClient;

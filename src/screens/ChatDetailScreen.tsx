@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     StyleSheet, Text, View, TextInput, FlatList,
-    TouchableOpacity, SafeAreaView, ActivityIndicator,
+    TouchableOpacity, ActivityIndicator,
     KeyboardAvoidingView, Platform, Keyboard, Image
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { chatApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
@@ -13,6 +14,7 @@ import moment from 'moment';
 export default function ChatDetailScreen({ route, navigation }: any) {
     const { isDark, theme } = useTheme();
     const { t } = useLanguage();
+    const insets = useSafeAreaInsets();
     const { otherUser, studentId } = route.params;
     const [messages, setMessages] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -28,7 +30,6 @@ export default function ChatDetailScreen({ route, navigation }: any) {
             const response = await chatApi.getConversation(otherUser.id, studentId);
             const rawMessages = response.data.data;
             
-            // Map backend messages to UI format if needed
             const formattedMessages = rawMessages.map((m: any) => ({
                 id: m.id,
                 text: m.body,
@@ -50,7 +51,6 @@ export default function ChatDetailScreen({ route, navigation }: any) {
         const text = inputText.trim();
         setInputText('');
 
-        // Optimistic update
         const tempId = `temp_${Date.now()}`;
         const newMessage = {
             id: tempId,
@@ -60,18 +60,14 @@ export default function ChatDetailScreen({ route, navigation }: any) {
         };
 
         setMessages(prev => [...prev, newMessage]);
-        Keyboard.dismiss();
-
+        
         try {
             await chatApi.sendMessage(otherUser.id, text, studentId);
-            // Optionally re-fetch to get real ID and server timestamp
         } catch (error) {
             console.error('Error sending message:', error);
-            // Revert optimistic update or show error
             setMessages(prev => prev.filter(m => m.id !== tempId));
         }
 
-        // Scroll to bottom
         setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -83,19 +79,21 @@ export default function ChatDetailScreen({ route, navigation }: any) {
             <View style={[styles.messageWrapper, isParent ? styles.parentWrapper : styles.teacherWrapper]}>
                 <View style={[
                     styles.bubble, 
-                    isParent ? [styles.parentBubble, { backgroundColor: isDark ? '#60A5FA' : '#3498db' }] : [styles.teacherBubble, { backgroundColor: isDark ? '#2D3748' : 'white' }]
+                    isParent ? [styles.parentBubble, { backgroundColor: isDark ? '#3b82f6' : '#3498db' }] : [styles.teacherBubble, { backgroundColor: theme.surface }]
                 ]}>
                     <Text style={[styles.messageText, isParent ? styles.parentText : [styles.teacherText, { color: theme.text }]]}>
                         {item.text}
                     </Text>
                 </View>
-                <Text style={[styles.messageTime, { color: theme.textSecondary }]}>{item.time}</Text>
+                <Text style={[styles.messageTime, { color: theme.textSecondary, alignSelf: isParent ? 'flex-end' : 'flex-start' }]}>
+                    {item.time}
+                </Text>
             </View>
         );
     };
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
             {/* Header */}
             <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <View style={styles.headerLeft}>
@@ -106,7 +104,7 @@ export default function ChatDetailScreen({ route, navigation }: any) {
                         {otherUser?.avatarUrl ? (
                             <Image source={{ uri: otherUser.avatarUrl }} style={styles.avatarImgMini} />
                         ) : (
-                            <Text style={styles.avatarEmojiMini}>
+                            <Text style={[styles.avatarEmojiMini, { color: theme.textSecondary }]}>
                                 {otherUser?.fullName?.charAt(0) || '💬'}
                             </Text>
                         )}
@@ -123,101 +121,108 @@ export default function ChatDetailScreen({ route, navigation }: any) {
             </View>
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-                {loading ? (
-                    <View style={styles.center}>
-                        <ActivityIndicator size="large" color={theme.primary} />
-                    </View>
-                ) : (
-                    <FlatList
-                        ref={flatListRef}
-                        data={messages}
-                        keyExtractor={(item) => item.id}
-                        renderItem={renderMessage}
-                        contentContainerStyle={styles.messageList}
-                        showsVerticalScrollIndicator={false}
-                        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                    />
-                )}
+                <View style={{ flex: 1 }}>
+                    {loading ? (
+                        <View style={styles.center}>
+                            <ActivityIndicator size="large" color={theme.primary} />
+                        </View>
+                    ) : (
+                        <FlatList
+                            ref={flatListRef}
+                            data={messages}
+                            keyExtractor={(item) => item.id}
+                            renderItem={renderMessage}
+                            contentContainerStyle={[styles.messageList, { paddingBottom: 20 }]}
+                            showsVerticalScrollIndicator={false}
+                            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                        />
+                    )}
+                </View>
 
                 {/* Input Area */}
-                <View style={[styles.inputArea, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
-                    <TouchableOpacity style={styles.attachBtn}>
-                        <Ionicons name="add" size={28} color={theme.primary} />
-                    </TouchableOpacity>
-                    <View style={[styles.inputWrapper, { backgroundColor: isDark ? '#2D3748' : '#f1f3f6' }]}>
-                        <TextInput
-                            style={[styles.input, { color: theme.text }]}
-                            placeholder={t('chat.inputPlaceholder')}
-                            placeholderTextColor={theme.textSecondary}
-                            value={inputText}
-                            onChangeText={setInputText}
-                            multiline
-                        />
+                <View style={{ backgroundColor: theme.surface, paddingBottom: insets.bottom || 12 }}>
+                    <View style={[styles.inputArea, { borderTopColor: theme.border }]}>
+                        <TouchableOpacity style={styles.attachBtn}>
+                            <Ionicons name="add-circle-outline" size={30} color={theme.primary} />
+                        </TouchableOpacity>
+                        <View style={[styles.inputWrapper, { backgroundColor: isDark ? '#2D3748' : '#f1f3f6' }]}>
+                            <TextInput
+                                style={[styles.input, { color: theme.text, maxHeight: 120 }]}
+                                placeholder={t('chat.inputPlaceholder')}
+                                placeholderTextColor={theme.textSecondary}
+                                value={inputText}
+                                onChangeText={setInputText}
+                                multiline
+                            />
+                        </View>
+                        <TouchableOpacity
+                            style={[styles.sendBtn, { backgroundColor: theme.primary }, !inputText.trim() && { opacity: 0.5 }]}
+                            onPress={handleSend}
+                            disabled={!inputText.trim()}
+                        >
+                            <Ionicons name="send" size={18} color="white" />
+                        </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                        style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-                        onPress={handleSend}
-                    >
-                        <Ionicons name="send" size={20} color="white" />
-                    </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f8f9fa' },
+    container: { flex: 1 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 16,
-        height: 70,
-        backgroundColor: 'white',
+        height: 64,
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0'
     },
     headerLeft: { flexDirection: 'row', alignItems: 'center' },
-    backBtn: { width: 36, height: 44, justifyContent: 'center' },
-    avatarMini: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden' },
-    avatarImgMini: { width: 40, height: 40, borderRadius: 20 },
-    avatarEmojiMini: { fontSize: 20, fontWeight: 'bold', color: '#7f8c8d' },
-    onlineDotMini: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#2ecc71', borderWidth: 1.5, borderColor: 'white' },
+    backBtn: { marginRight: 8, padding: 4 },
+    avatarMini: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden' },
+    avatarImgMini: { width: 38, height: 38, borderRadius: 19 },
+    avatarEmojiMini: { fontSize: 18, fontWeight: 'bold' },
+    onlineDotMini: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#2ecc71', borderWidth: 2 },
     contactInfo: { justifyContent: 'center' },
-    headerName: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50' },
+    headerName: { fontSize: 16, fontWeight: 'bold' },
     headerStatus: { fontSize: 12, color: '#2ecc71', fontWeight: '500' },
-    callHeaderBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#e8f7ed', justifyContent: 'center', alignItems: 'center' },
+    callHeaderBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
 
-    messageList: { padding: 16, paddingBottom: 30 },
-    messageWrapper: { marginBottom: 20, maxWidth: '80%' },
+    messageList: { padding: 16 },
+    messageWrapper: { marginBottom: 16, maxWidth: '85%' },
     parentWrapper: { alignSelf: 'flex-end' },
     teacherWrapper: { alignSelf: 'flex-start' },
-    bubble: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20 },
-    parentBubble: { backgroundColor: '#3498db', borderBottomRightRadius: 4 },
-    teacherBubble: { backgroundColor: 'white', borderBottomLeftRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+    bubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+    parentBubble: { borderBottomRightRadius: 4 },
+    teacherBubble: { borderBottomLeftRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
     messageText: { fontSize: 15, lineHeight: 22 },
     parentText: { color: 'white' },
     teacherText: { color: '#2c3e50' },
-    messageTime: { fontSize: 11, color: '#bdc3c7', marginTop: 4, alignSelf: 'flex-start' },
+    messageTime: { fontSize: 10, marginTop: 4 },
 
     inputArea: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         paddingHorizontal: 12,
         paddingVertical: 10,
-        backgroundColor: 'white',
         borderTopWidth: 1,
-        borderTopColor: '#f0f0f0'
     },
-    attachBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-    inputWrapper: { flex: 1, backgroundColor: '#f1f3f6', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 8, marginHorizontal: 8, maxHeight: 100 },
-    input: { fontSize: 15, color: '#2c3e50' },
-    sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#3498db', justifyContent: 'center', alignItems: 'center' },
-    sendBtnDisabled: { backgroundColor: '#bdc3c7' }
+    attachBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+    inputWrapper: { 
+        flex: 1, 
+        borderRadius: 22, 
+        paddingHorizontal: 16, 
+        paddingVertical: Platform.OS === 'ios' ? 10 : 6, 
+        marginHorizontal: 4, 
+        justifyContent: 'center'
+    },
+    input: { fontSize: 15, padding: 0 },
+    sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
 });

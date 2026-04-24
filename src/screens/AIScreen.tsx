@@ -1,12 +1,206 @@
-import React from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TextInput, 
+  TouchableOpacity, 
+  FlatList, 
+  KeyboardAvoidingView, 
+  Platform,
+  ActivityIndicator,
+  Keyboard,
+  Image,
+  Alert
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import EventSource from 'react-native-sse';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { aiApi } from '../services/api';
+import apiClient from '../services/api';
+
+interface Message {
+  id: string;
+  role: 'user' | 'ai';
+  text: string;
+  image?: string; // Base64
+}
 
 export default function AIScreen() {
     const { isDark, theme } = useTheme();
+    const insets = useSafeAreaInsets();
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [inputText, setInputText] = useState('');
+    const [selectedImage, setSelectedImage] = useState<{ uri: string, base64: string | undefined } | null>(null);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [isTyping, setIsTyping] = useState(false);
+    const flatListRef = useRef<FlatList>(null);
+    const sseRef = useRef<EventSource | null>(null);
+
+    useEffect(() => {
+        loadHistory();
+        return () => {
+            if (sseRef.current) sseRef.current.close();
+        };
+    }, []);
+
+    const pickImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Quyền truy cập', 'Bạn cần cho phép truy cập thư viện ảnh để sử dụng tính năng này.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.5,
+            base64: true,
+        });
+
+        if (!result.canceled) {
+            setSelectedImage({ uri: result.assets[0].uri, base64: result.assets[0].base64 || undefined });
+        }
+    };
+
+    const loadHistory = async () => {
+        try {
+            const res = await aiApi.getHistory(20);
+            const history = Array.isArray(res.data.data) ? [...res.data.data].reverse() : 
+                            Array.isArray(res.data) ? [...res.data].reverse() : [];
+
+            const formattedMessages: Message[] = [];
+            history.forEach((chat: any) => {
+                formattedMessages.push({ id: `user-${chat.id}`, role: 'user', text: chat.prompt });
+                formattedMessages.push({ id: `ai-${chat.id}`, role: 'ai', text: chat.answer });
+            });
+            setMessages(formattedMessages);
+        } catch (error) {
+            console.log('[AI] Lỗi tải lịch sử:', error);
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    const handleSend = async (textToSend?: string) => {
+        const text = textToSend || inputText;
+        if ((!text.trim() && !selectedImage) || isTyping) return;
+
+        const userMsg: Message = { 
+            id: Date.now().toString(), 
+            role: 'user', 
+            text: text,
+            image: selectedImage?.uri 
+        };
+        setMessages((prev) => [...prev, userMsg]);
+        
+        const currentImageBase64 = selectedImage?.base64;
+        setSelectedImage(null);
+        setInputText('');
+        setIsTyping(true);
+        Keyboard.dismiss();
+
+        const aiMessageId = (Date.now() + 1).toString();
+        setMessages((prev) => [...prev, { id: aiMessageId, role: 'ai', text: '' }]);
+
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            const baseUrl = apiClient.defaults.baseURL || 'http://localhost:3000/api/v1';
+            const url = `${baseUrl}/ai/ask`;
+
+            sseRef.current = new EventSource(url, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                method: 'POST',
+                body: JSON.stringify({ 
+                    prompt: userMsg.text,
+                    image: currentImageBase64,
+                    mimeType: 'image/jpeg'
+                }),
+                pollingInterval: 0,
+            });
+
+            sseRef.current.addEventListener('message', (event: any) => {
+                if (event.data === '[DONE]') {
+                    setIsTyping(false);
+                    if (sseRef.current) sseRef.current.close();
+                    return;
+                }
+                if (event.data) {
+                    try {
+                        const parsed = JSON.parse(event.data);
+                        if (parsed.text) {
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === aiMessageId ? { ...msg, text: msg.text + parsed.text } : msg
+                                )
+                            );
+                        } else if (parsed.error) {
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === aiMessageId ? { ...msg, text: "Xin lỗi, đã xảy ra lỗi (có thể chưa cấu hình API Key)." } : msg
+                                )
+                            );
+                            setIsTyping(false);
+                            if (sseRef.current) sseRef.current.close();
+                        }
+                    } catch (e) {}
+                }
+            });
+
+            sseRef.current.addEventListener('done' as any, () => {
+                setIsTyping(false);
+                if (sseRef.current) sseRef.current.close();
+            });
+
+            sseRef.current.addEventListener('error', (event) => {
+                console.log('[AI] SSE Error:', event);
+                setIsTyping(false);
+                if (sseRef.current) sseRef.current.close();
+            });
+
+        } catch (error) {
+            setIsTyping(false);
+        }
+    };
+
+    const renderMessage = ({ item }: { item: Message }) => {
+        const isUser = item.role === 'user';
+        if (isUser) {
+            return (
+                <View style={[styles.messageRow, styles.messageRowUser]}>
+                    <View style={[styles.userMessageBubble, { backgroundColor: theme.primary }]}>
+                        {item.image && (
+                            <Image source={{ uri: item.image }} style={styles.messageImage} />
+                        )}
+                        <Text style={[styles.messageText, { color: '#FFF' }]}>{item.text}</Text>
+                    </View>
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.messageRow}>
+                <View style={[styles.aiMessageBubble, { backgroundColor: theme.surface }]}>
+                    <View style={styles.aiLabelRow}>
+                        <Ionicons name="sparkles" size={14} color="#f39c12" />
+                        <Text style={[styles.aiLabel, { color: theme.textSecondary }]}>ICLEVER AI</Text>
+                    </View>
+                    <Text style={[styles.messageText, { color: theme.text }]}>
+                        {item.text || 'Đang suy nghĩ...'}
+                    </Text>
+                </View>
+            </View>
+        );
+    };
+
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
             {/* --- AI HEADER --- */}
             <View style={[styles.aiHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <View style={styles.headerLeft}>
@@ -23,139 +217,203 @@ export default function AIScreen() {
                 </View>
             </View>
 
-            <ScrollView style={styles.chatContainer} showsVerticalScrollIndicator={false}>
-                {/* --- MESSAGE BUBBLE --- */}
-                <View style={styles.messageRow}>
-                    <View style={[styles.aiMessageBubble, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
-                        <View style={styles.aiLabelRow}>
-                            <Ionicons name="sparkles" size={14} color="#f39c12" />
-                            <Text style={[styles.aiLabel, { color: theme.textSecondary }]}>ICLEVER AI</Text>
+            <KeyboardAvoidingView 
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+                <View style={{ flex: 1 }}>
+                    {isLoadingHistory ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="large" color={theme.primary} />
                         </View>
-                        <Text style={[styles.messageText, { color: theme.text }]}>
-                            Chào bạn! Tôi là trợ lý ảo iClever AI. Tôi có thể giúp gì cho bạn hôm nay?
-                        </Text>
-                        <Text style={[styles.timeText, { color: theme.textSecondary }]}>10:07 AM</Text>
+                    ) : (
+                        <FlatList
+                            ref={flatListRef}
+                            data={messages}
+                            keyExtractor={(item) => item.id}
+                            renderItem={renderMessage}
+                            contentContainerStyle={[styles.chatContainer, { paddingBottom: 20 }]}
+                            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                            onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <MaterialCommunityIcons name="robot-outline" size={60} color={theme.textSecondary} style={{ opacity: 0.5, marginBottom: 16 }} />
+                                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                                        Chào bạn! Tôi là trợ lý ảo iClever AI. Tôi có thể giúp gì cho bạn hôm nay?
+                                    </Text>
+                                    
+                                    <View style={styles.suggestedActions}>
+                                        <Text style={[styles.suggestedTitle, { color: theme.textSecondary }]}>Gợi ý:</Text>
+                                        <TouchableOpacity onPress={() => handleSend("Hôm nay có lịch học gì không?")} style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
+                                            <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Hôm nay có lịch học gì không?</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handleSend("Hướng dẫn giải bài tập Toán")} style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
+                                            <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Hướng dẫn giải bài tập Toán</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            }
+                        />
+                    )}
+                </View>
+
+                {/* --- INPUT AREA --- */}
+                <View style={{ backgroundColor: theme.surface, paddingBottom: insets.bottom || 10 }}>
+                    {selectedImage && (
+                        <View style={[styles.imagePreviewContainer, { borderTopColor: theme.border }]}>
+                            <View style={styles.imageWrapper}>
+                                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
+                                <TouchableOpacity style={styles.removeImageBtn} onPress={() => setSelectedImage(null)}>
+                                    <Ionicons name="close-circle" size={24} color="#e74c3c" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+                    <View style={[styles.inputArea, { borderTopColor: theme.border }]}>
+                        <TouchableOpacity style={styles.attachBtn} onPress={pickImage} disabled={isTyping}>
+                            <Ionicons name="image-outline" size={28} color={theme.primary} />
+                        </TouchableOpacity>
+                        <View style={[styles.inputBox, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
+                            <TextInput
+                                style={[styles.input, { color: theme.text }]}
+                                placeholder="Hỏi trợ lý iClever..."
+                                placeholderTextColor={theme.textSecondary}
+                                value={inputText}
+                                onChangeText={setInputText}
+                                multiline
+                                maxLength={500}
+                                editable={!isTyping}
+                            />
+                        </View>
+                        <TouchableOpacity 
+                            style={[styles.sendBtn, { backgroundColor: theme.primary }, (!inputText.trim() && !selectedImage) || isTyping ? { opacity: 0.5 } : {}]}
+                            onPress={() => handleSend()}
+                            disabled={(!inputText.trim() && !selectedImage) || isTyping}
+                        >
+                            <Ionicons name="send" size={20} color="white" />
+                        </TouchableOpacity>
                     </View>
                 </View>
-
-                {/* Suggestions can stay but moved here or removed as per image */}
-                <View style={styles.suggestedActions}>
-                    <Text style={[styles.suggestedTitle, { color: theme.textSecondary }]}>Bạn có thể hỏi mình:</Text>
-                    <TouchableOpacity style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
-                        <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Giải bài tập Toán lớp 7</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
-                        <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Dịch đoạn văn bản sang tiếng Anh</Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-
-            {/* --- INPUT AREA --- */}
-            <View style={[styles.inputArea, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
-                <TouchableOpacity style={styles.attachmentBtn}>
-                    <Ionicons name="add" size={28} color={theme.textSecondary} />
-                </TouchableOpacity>
-                <View style={[styles.inputBox, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
-                    <Text style={[styles.inputText, { color: theme.textSecondary }]}>Hỏi trợ lý iClever...</Text>
-                </View>
-                <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme.primary }]}>
-                    <Ionicons name="send" size={20} color="white" />
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
+            </KeyboardAvoidingView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f5f6fa' },
-    
-    // Header
+    container: { flex: 1 },
     aiHeader: {
-        backgroundColor: 'white',
+        height: 64,
         paddingHorizontal: 20,
-        paddingTop: 10,
-        paddingBottom: 15,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        zIndex: 10
     },
     headerLeft: { flexDirection: 'row', alignItems: 'center' },
     robotIconBox: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: '#3b5998',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center'
     },
-    aiTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
+    aiTitle: { fontSize: 17, fontWeight: 'bold' },
     statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
     activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2ecc71', marginRight: 6 },
-    statusText: { fontSize: 13, color: '#2ecc71', fontWeight: '500' },
+    statusText: { fontSize: 12, color: '#2ecc71', fontWeight: '500' },
     
-    // Chat content
-    chatContainer: { flex: 1, padding: 15 },
-    messageRow: { marginBottom: 20, alignItems: 'flex-start' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    chatContainer: { padding: 15 },
+    messageRow: { marginBottom: 16, alignItems: 'flex-start' },
+    messageRowUser: { alignItems: 'flex-end' },
+    
     aiMessageBubble: {
-        backgroundColor: 'white',
         padding: 15,
-        borderRadius: 20,
-        borderTopLeftRadius: 5,
+        borderRadius: 18,
+        borderTopLeftRadius: 4,
         maxWidth: '85%',
-        elevation: 1,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.05,
         shadowRadius: 2,
+        elevation: 1,
     },
-    aiLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-    aiLabel: { fontSize: 11, fontWeight: 'bold', color: '#7f8c8d', marginLeft: 6, letterSpacing: 0.5 },
-    messageText: { fontSize: 15, color: '#2c3e50', lineHeight: 22 },
-    timeText: { fontSize: 11, color: '#bdc3c7', textAlign: 'right', marginTop: 8 },
+    userMessageBubble: {
+        padding: 15,
+        borderRadius: 18,
+        borderTopRightRadius: 4,
+        maxWidth: '85%',
+    },
+    aiLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+    aiLabel: { fontSize: 10, fontWeight: 'bold', marginLeft: 4, letterSpacing: 0.5 },
+    messageText: { fontSize: 15, lineHeight: 22 },
+    messageImage: {
+        width: 220,
+        height: 160,
+        borderRadius: 12,
+        marginBottom: 8,
+        resizeMode: 'cover',
+    },
     
-    // Suggestions
-    suggestedActions: { marginTop: 10, paddingHorizontal: 10 },
-    suggestedTitle: { fontSize: 13, color: '#7f8c8d', marginBottom: 12, fontWeight: '500' },
+    emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+    emptyText: { fontSize: 15, textAlign: 'center', marginHorizontal: 30, marginBottom: 30 },
+    suggestedActions: { width: '100%', marginTop: 20 },
+    suggestedTitle: { fontSize: 13, marginBottom: 12, fontWeight: '500', textAlign: 'center' },
     suggestedBtn: { 
-        backgroundColor: 'rgba(59, 89, 152, 0.05)', 
         paddingVertical: 12, 
-        paddingHorizontal: 15, 
-        borderRadius: 15, 
+        paddingHorizontal: 20, 
+        borderRadius: 20, 
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: 'rgba(59, 89, 152, 0.1)'
     },
-    suggestedBtnText: { fontSize: 14, color: '#3b5998', fontWeight: '500' },
+    suggestedBtnText: { fontSize: 14, fontWeight: '500', textAlign: 'center' },
 
-    // Input area
-    inputArea: {
-        backgroundColor: 'white',
-        flexDirection: 'row',
-        alignItems: 'center',
+    imagePreviewContainer: {
         paddingHorizontal: 15,
-        paddingVertical: 12,
+        paddingTop: 10,
         borderTopWidth: 1,
-        borderTopColor: '#eee',
     },
-    attachmentBtn: { marginRight: 10 },
+    imageWrapper: {
+        width: 70,
+        height: 70,
+    },
+    imagePreview: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 12,
+    },
+    removeImageBtn: {
+        position: 'absolute',
+        top: -8,
+        right: -8,
+        backgroundColor: 'white',
+        borderRadius: 12,
+    },
+    inputArea: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
     inputBox: { 
         flex: 1, 
-        backgroundColor: '#f1f2f6', 
-        height: 44, 
-        borderRadius: 22, 
+        borderRadius: 24, 
+        minHeight: 44,
+        maxHeight: 120,
         justifyContent: 'center', 
-        paddingHorizontal: 15 
+        paddingHorizontal: 16,
+        paddingVertical: Platform.OS === 'ios' ? 10 : 6
     },
-    inputText: { color: '#bdc3c7', fontSize: 14 },
+    input: { fontSize: 15, flex: 1 },
+    attachBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
     sendBtn: { 
         width: 44, 
         height: 44, 
         borderRadius: 22, 
-        backgroundColor: '#3b5998', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        marginLeft: 10 
+        marginLeft: 8
     },
 });
