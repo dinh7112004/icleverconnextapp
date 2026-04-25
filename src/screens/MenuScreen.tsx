@@ -14,47 +14,62 @@ interface MenuScreenProps {
     avatarUrl?: string;
 }
 
+import { userCache } from '../services/userCache';
+
 export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreenProps) {
     const { isDark, theme } = useTheme();
     const { t } = useLanguage();
     const navigation = useNavigation<any>();
-    const [userRole, setUserRole] = React.useState<string>('STUDENT');
-    const [userName, setUserName] = React.useState<string>('');
+    
+    // Khởi tạo ĐỒNG BỘ từ bộ nhớ RAM (0ms delay)
+    const cachedUser = userCache.getUser();
+    const [userRole, setUserRole] = React.useState<string>(cachedUser?.role || 'STUDENT');
+    const [userName, setUserName] = React.useState<string>(cachedUser?.fullName || '');
+    const [currentAvatar, setCurrentAvatar] = React.useState<string | undefined>(avatarUrl || cachedUser?.avatarUrl);
+
 
     React.useEffect(() => {
         if (isVisible) {
+            // Cập nhật lại ngay từ RAM mỗi khi mở Menu để đảm bảo mới nhất
+            const freshCache = userCache.getUser();
+            if (freshCache) {
+                setUserName(freshCache.fullName);
+                setUserRole(freshCache.role);
+                setCurrentAvatar(freshCache.avatarUrl);
+            }
+            // Sync ngầm với Server (không chặn UI)
             fetchUserData();
         }
     }, [isVisible]);
 
     const fetchUserData = async () => {
         try {
-            // First check AsyncStorage for quick load
-            const stored = await AsyncStorage.getItem('user');
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                setUserName(parsed.fullName);
-                setUserRole(parsed.role);
-            }
-
-            // Sync with Server
             const { userApi } = require('../services/api');
             const response = await userApi.getProfile();
-            const userData = response.data.data;
-            setUserName(userData.fullName);
-            setUserRole(userData.role);
+            const userData = response.data.data || response.data;
+            
+            if (userData) {
+                setUserName(userData.fullName);
+                setUserRole(userData.role);
+                setCurrentAvatar(userData.avatarUrl);
+                userCache.setUser(userData); // Cập nhật lại kho RAM
+            }
         } catch (error) {
-            console.error('Error fetching user data in Menu:', error);
+            // Lỗi thì thôi, vì ta đã có dữ liệu trong RAM/Cache rồi
         }
     };
 
+
     const handleLogout = async () => {
         try {
-            await AsyncStorage.multiRemove(['userToken', 'refreshToken', 'user']);
+            onClose(); // Đóng modal trước
+            await userCache.clear();
+            // emitLogout() sẽ set isLoggedIn=false trong AppNavigator
+            // → tự động switch sang AuthenticationStack (Login)
+            // Không cần navigation.reset vì Login không nằm trong MainNavigator
             authEvents.emitLogout();
-            onClose();
         } catch (error) {
-            console.error('Error logging out:', error);
+            console.error('Logout error:', error);
         }
     };
 
@@ -94,16 +109,20 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                     <View style={styles.profileSection}>
                         <View style={styles.avatarContainer}>
                             <View style={styles.avatarPlaceholder}>
-                                {avatarUrl && avatarUrl.startsWith('http') ? (
+                                {currentAvatar ? (
                                     <Image 
-                                        source={{ uri: avatarUrl }} 
+                                        source={{ uri: currentAvatar }} 
                                         style={{ width: 70, height: 70, borderRadius: 35 }} 
+                                        fadeDuration={0}
                                     />
                                 ) : (
-                                    <Text style={{ fontSize: 32 }}>{avatarUrl || (userName ? userName.charAt(0) : '👨🏽‍Đ')}</Text>
+                                    <View style={{ width: '100%', height: '100%', backgroundColor: '#e1e8ef', justifyContent: 'center', alignItems: 'center' }}>
+                                        <Ionicons name="person" size={35} color="#94a3b8" />
+                                    </View>
                                 )}
                             </View>
                         </View>
+
                         <View style={styles.profileText}>
                             <Text style={styles.userName}>{userName || t('common.user')}</Text>
                             <View style={styles.roleBadge}>
@@ -219,19 +238,19 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        padding: 4,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'white',
     },
     avatarPlaceholder: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
+        width: 72,
+        height: 72,
+        borderRadius: 36,
         backgroundColor: '#e1e8ef',
         justifyContent: 'center',
         alignItems: 'center',
+        overflow: 'hidden',
     },
     profileText: {
         marginLeft: 20,

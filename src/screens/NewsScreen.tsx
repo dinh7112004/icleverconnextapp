@@ -10,6 +10,7 @@ import moment from 'moment';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import { userCache } from '../services/userCache';
 
 // Dữ liệu mẫu cho Hòm thư (Tab 2)
 const mailItems = [
@@ -30,8 +31,8 @@ export default function NewsScreen({ route }: any) {
     const [confirmedIds, setConfirmedIds] = useState<string[]>([]);
     const [feedbackVisibleIds, setFeedbackVisibleIds] = useState<string[]>([]);
     const [feedbackTexts, setFeedbackTexts] = useState<{[key: string]: string}>({});
-    const [userData, setUserData] = useState<any>(null);
-    const [studentInfo, setStudentInfo] = useState<any>(null);
+    const [userData, setUserData] = useState<any>(userCache.getUser());
+    const [studentInfo, setStudentInfo] = useState<any>(userCache.getStudentProfile());
     const [hasLoadedCache, setHasLoadedCache] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 

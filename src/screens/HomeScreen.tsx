@@ -8,6 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import { userCache } from '../services/userCache';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CACHE_KEY_NEWS = 'home_news_cache';
@@ -80,13 +82,32 @@ export default function HomeScreen({ navigation }: any) {
 
     const fetchUrgentNotis = useCallback(async () => {
         try {
-            const res = await notificationApi.getAll({ limit: 10 });
+            // Chỉ yêu cầu lấy các thông báo khẩn cấp hoặc cao chưa đọc
+            const res = await notificationApi.getAll({ 
+                priority: 'urgent', 
+                status: 'unread',
+                limit: 5 
+            });
             let data = res.data.data || res.data;
             if (data && data.data) data = data.data;
-            const all = Array.isArray(data) ? data : [];
-            const urgent = all.filter((n: any) => (n.priority === 'urgent' || n.priority === 'high') && n.status === 'unread').slice(0, 2);
-            setUrgentNotis(urgent);
-            AsyncStorage.setItem(CACHE_KEY_URGENT, JSON.stringify(urgent));
+            const urgent = Array.isArray(data) ? data : [];
+            
+            // Nếu không có urgent, thử lấy high priority
+            if (urgent.length === 0) {
+                const highRes = await notificationApi.getAll({ 
+                    priority: 'high', 
+                    status: 'unread',
+                    limit: 5 
+                });
+                let highData = highRes.data.data || highRes.data;
+                if (highData && highData.data) highData = highData.data;
+                const high = Array.isArray(highData) ? highData : [];
+                setUrgentNotis(high.slice(0, 2));
+                AsyncStorage.setItem(CACHE_KEY_URGENT, JSON.stringify(high.slice(0, 2)));
+            } else {
+                setUrgentNotis(urgent.slice(0, 2));
+                AsyncStorage.setItem(CACHE_KEY_URGENT, JSON.stringify(urgent.slice(0, 2)));
+            }
         } catch (e) {
             console.error('Error fetching urgent notis:', e);
         } finally {
@@ -96,6 +117,7 @@ export default function HomeScreen({ navigation }: any) {
 
     const loadInitialData = async () => {
         try {
+            // 1. Đọc tất cả từ cache CÙNG LÚC và hiện lên ngay lập tức
             const [cachedNews, cachedUrgent, userString, studentString] = await Promise.all([
                 AsyncStorage.getItem(CACHE_KEY_NEWS),
                 AsyncStorage.getItem(CACHE_KEY_URGENT),
@@ -103,45 +125,52 @@ export default function HomeScreen({ navigation }: any) {
                 AsyncStorage.getItem('student_profile')
             ]);
 
-            if (cachedNews) {
-                setNews(JSON.parse(cachedNews));
-                setLoadingNews(false);
-            }
-            if (cachedUrgent) {
-                setUrgentNotis(JSON.parse(cachedUrgent));
-                setLoadingUrgent(false);
-            }
+            if (cachedNews) setNews(JSON.parse(cachedNews));
+            if (cachedUrgent) setUrgentNotis(JSON.parse(cachedUrgent));
             if (userString) {
                 const user = JSON.parse(userString);
                 setUserData(user);
+                userCache.setUser(user);
                 setUserRole(user.role ? user.role.toLowerCase() : 'parent');
             }
             if (studentString) {
-                setStudentInfo(JSON.parse(studentString));
+                const student = JSON.parse(studentString);
+                setStudentInfo(student);
+                userCache.setStudentProfile(student);
             }
+            
+            // Hiện UI từ cache ngay, không đợi API
+            setLoadingNews(false);
+            setLoadingUrgent(false);
             setHasLoadedCache(true);
 
-            // Sync fresh data in background
-            const response = await userApi.getProfile();
-            const freshUser = response.data.data || response.data;
-            if (freshUser) {
-                setUserData(freshUser);
-                setUserRole(freshUser.role ? freshUser.role.toLowerCase() : 'parent');
-                AsyncStorage.setItem('user', JSON.stringify(freshUser));
-            }
+            // 2. Chạy cập nhật ngầm, đẩy dữ liệu mới nhất vào kho siêu tốc
+            userApi.getProfile().then(response => {
+                const freshUser = response.data.data || response.data;
+                if (freshUser) {
+                    setUserData(freshUser);
+                    userCache.setUser(freshUser);
+                    setUserRole(freshUser.role ? freshUser.role.toLowerCase() : 'parent');
+                }
+            }).catch(() => {});
 
-            const studentResponse = await studentApi.getProfile();
-            const freshStudent = studentResponse.data.data || studentResponse.data;
-            if (freshStudent) {
-                setStudentInfo(freshStudent);
-                AsyncStorage.setItem('student_profile', JSON.stringify(freshStudent));
-                fetchNews(freshStudent.currentClassId);
-            } else {
-                fetchNews();
-            }
+            studentApi.getProfile().then(studentResponse => {
+                const freshStudent = studentResponse.data.data || studentResponse.data;
+                if (freshStudent) {
+                    setStudentInfo(freshStudent);
+                    userCache.setStudentProfile(freshStudent);
+                    fetchNews(freshStudent.currentClassId);
+                } else {
+                    fetchNews();
+                }
+            }).catch(() => {});
+
+            
             fetchUrgentNotis();
         } catch (error) {
-            console.error('Error loading initial data:', error);
+            // console.log('Silent error loading initial data:', error);
+            setLoadingNews(false);
+            setLoadingUrgent(false);
         }
     };
 
@@ -160,23 +189,26 @@ export default function HomeScreen({ navigation }: any) {
                     if (userString) {
                         const user = JSON.parse(userString);
                         setUserData(user);
+                        userCache.setUser(user);
                         setUserRole(user.role ? user.role.toLowerCase() : 'parent');
                     }
                     if (studentString) {
-                        setStudentInfo(JSON.parse(studentString));
+                        const student = JSON.parse(studentString);
+                        setStudentInfo(student);
+                        userCache.setStudentProfile(student);
                     }
                 } catch (e) {}
             };
             
             reloadFromCache();
             
-            // Sync fresh data in background
+            // Sync fresh data in background - SILENTLY
             userApi.getProfile().then(res => {
                 const freshUser = res.data.data || res.data;
                 if (freshUser) {
                     setUserData(freshUser);
+                    userCache.setUser(freshUser);
                     setUserRole(freshUser.role ? freshUser.role.toLowerCase() : 'parent');
-                    AsyncStorage.setItem('user', JSON.stringify(freshUser));
                 }
             }).catch(() => {});
 
@@ -184,13 +216,14 @@ export default function HomeScreen({ navigation }: any) {
                 const freshStudent = res.data.data || res.data;
                 if (freshStudent) {
                     setStudentInfo(freshStudent);
-                    AsyncStorage.setItem('student_profile', JSON.stringify(freshStudent));
+                    userCache.setStudentProfile(freshStudent);
                 }
             }).catch(() => {});
 
             fetchUrgentNotis();
         }, [])
     );
+
 
     const filteredMenuItems = menuItems.filter(item => item.roles.includes(userRole));
 

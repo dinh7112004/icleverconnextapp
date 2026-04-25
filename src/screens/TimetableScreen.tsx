@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, Dimensions, Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, Dimensions, Alert, LayoutAnimation, Platform, UIManager, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import apiClient, { scheduleApi, academicApi } from '../services/api';
@@ -323,7 +323,14 @@ export default function TimetableScreen({ navigation }: any) {
             )}
 
             <View style={styles.content}>
-                {loading ? <View style={{flex:1, justifyContent:'center', alignItems:'center'}}><Text style={{color: theme.text}}>Đang tải...</Text></View> : (viewType === 'daily' ? renderDailyView() : renderWeeklyView())}
+                {loading && timetable.length === 0 ? (
+                    <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
+                        <ActivityIndicator size="large" color={theme.primary} />
+                        <Text style={{color: theme.textSecondary, marginTop: 10}}>Đang lấy lịch học...</Text>
+                    </View>
+                ) : (
+                    viewType === 'daily' ? renderDailyView() : renderWeeklyView()
+                )}
             </View>
         </SafeAreaView>
     );

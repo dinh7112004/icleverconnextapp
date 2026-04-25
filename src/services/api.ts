@@ -7,17 +7,17 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userCache } from './userCache';
 
 // ─── Configuration ──────────────────────────────────────────────
-const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1';
-// const BASE_URL = 'http://localhost:3000/api/v1'; // Dùng cho Simulator
-// const BASE_URL = 'http://192.168.1.181:3000/api/v1'; // Đổi đuôi 180 thành 181
+// const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local (chỉ dùng khi dev)
+const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (production)
 
 
 // ─── Axios Instance ─────────────────────────────────────────────
 const apiClient = axios.create({
     baseURL: BASE_URL,
-    timeout: 15000,
+    timeout: 5000,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -26,7 +26,8 @@ const apiClient = axios.create({
 // ─── Request Interceptor: tự động gắn JWT token ─────────────────
 apiClient.interceptors.request.use(
     async (config) => {
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
+        const fullUrl = `${config.baseURL || ''}${config.url}`;
+        console.log(`[API REQUEST] ${config.method?.toUpperCase()} ${fullUrl}`);
         const token = await AsyncStorage.getItem('userToken');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -44,28 +45,34 @@ import { authEvents } from './authEvents';
 apiClient.interceptors.response.use(
     (response) => response,
     async (error) => {
+        const status = error.response?.status;
+        const url = error.config?.url;
+
+        // Chỉ log ra console.log thay vì console.error để tránh hiện bảng đỏ (LogBox)
+        console.log(`[API INFO] ${error.config?.method?.toUpperCase()} ${url} | Status: ${status} | Msg: ${error.message}`);
+
         // Nếu token hết hạn (401), xóa token và redirect về Login
-        if (error.response?.status === 401) {
+        if (status === 401) {
             console.log('[API] Token expired (401), logging out...');
-            await AsyncStorage.multiRemove(['userToken', 'refreshToken', 'user']);
+            await userCache.clear();
             authEvents.emitLogout();
         }
         return Promise.reject(error);
     }
 );
 
+
 // ─── Uploads ─────────────────────────────────────────────────────
 export const uploadApi = {
     post: async (data: FormData, folder: string = 'others') => {
-        const token = await AsyncStorage.getItem('userToken');
-        const response = await fetch(`${BASE_URL}/uploads?folder=${folder}`, {
-            method: 'POST',
-            body: data,
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        const response = await apiClient.post(`/uploads?folder=${folder}`, data, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+            // Tăng timeout riêng cho việc upload file lớn
+            timeout: 60000,
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.message || 'Upload failed');
-        return { data: result };
+        return { data: response.data };
     }
 };
 
@@ -155,12 +162,12 @@ export const academicApi = {
         }),
 
     getHomeworks: (classId: string) =>
-        apiClient.get('lms/assignments', { params: { classId } }),
+        apiClient.get('/lms/assignments', { params: { classId } }),
 
     submitHomework: (assignmentId: string, data: any) => {
         // Nếu data là FormData (có chứa file), gửi trực tiếp. 
         // Nếu không, axios sẽ tự xử lý JSON.
-        return apiClient.post(`lms/assignments/${assignmentId}/submit`, data, {
+        return apiClient.post(`/lms/assignments/${assignmentId}/submit`, data, {
             headers: {
                 'Content-Type': data instanceof FormData ? 'multipart/form-data' : 'application/json',
             },
@@ -168,7 +175,7 @@ export const academicApi = {
     },
 
     getSubmissions: (studentId: string) =>
-        apiClient.get('lms/submissions', { params: { studentId } }),
+        apiClient.get('/lms/submissions', { params: { studentId } }),
 
     getAttendance: (studentId: string, params?: any) =>
         apiClient.get('/attendance', { params: { studentId, ...params } }),
@@ -179,7 +186,7 @@ export const academicApi = {
 
 // ─── Notifications ───────────────────────────────────────────────
 export const notificationApi = {
-    getAll: (params?: { page?: number; limit?: number }) =>
+    getAll: (params?: { page?: number; limit?: number; priority?: string; status?: string; studentId?: string }) =>
         apiClient.get('/notifications', { params }),
 
     markRead: (id: string) =>

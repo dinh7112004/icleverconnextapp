@@ -1,5 +1,5 @@
 import React, { useState, useEffect, memo, useMemo } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Image, DeviceEventEmitter } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,74 +48,92 @@ function getLevelInfo(points: number) {
     return { level: current.level, levelName: current.name, pointsToNext, progress };
 }
 
-interface UserHeaderProps {
-    userData?: any;
-    studentInfo?: any;
-    isReady?: boolean;
-}
+import { userCache } from '../services/userCache';
 
 function UserHeader({ userData: propUserData, studentInfo: propStudentData, isReady }: UserHeaderProps) {
     const { isDark, theme } = useTheme();
     const [isMenuVisible, setMenuVisible] = useState(false);
-    const [internalUser, setInternalUser] = useState<any>(null);
     
-    // Ưu tiên dùng userData từ Props (HomeScreen truyền xuống), nếu không có thì dùng state nội bộ
+    // KHỞI TẠO ĐỒNG BỘ - Lấy từ Cache RAM ra dùng ngay lập tức
+    const [internalUser, setInternalUser] = useState<any>(propUserData || userCache.getUser());
+    const [studentData, setStudentData] = useState<any>(propStudentData || userCache.getStudentProfile());
+    
     const userData = propUserData || internalUser;
-    const [studentData, setStudentData] = useState<any>(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
     const navigation = useNavigation();
 
     useEffect(() => {
         const init = async () => {
+            // Nếu có dữ liệu mới từ Props thì cập nhật vào Cache
             if (propStudentData) {
                 setStudentData(propStudentData);
+                userCache.setStudentProfile(propStudentData);
+            }
+            if (propUserData) {
+                setInternalUser(propUserData);
+                userCache.setUser(propUserData);
             }
             
-            // Only fetch if we're missing essential data
-            if (!propUserData || (!propStudentData && !studentData)) {
+            // Nếu vẫn rỗng thì mới đi fetch
+            if (!userData || !studentData) {
                 fetchProfile();
             }
         };
+
         init();
-    }, [propUserData?.id, propStudentData?.id]); // Use IDs for more stable effect trigger
+
+        // Tự động cập nhật lại ảnh/thông tin mỗi khi màn hình được hiển thị lại
+        const unsubscribeFocus = navigation.addListener('focus', () => {
+            fetchProfile();
+        });
+
+        // Nghe tín hiệu thay đổi tức thì từ các màn hình khác
+        const eventSub = DeviceEventEmitter.addListener('refresh_user_profile', () => {
+            fetchProfile();
+        });
+
+        return () => {
+            unsubscribeFocus();
+            eventSub.remove();
+        };
+    }, [propUserData?.id, propStudentData?.id, navigation]);
 
     const fetchProfile = async () => {
         if (loadingProfile) return;
         try {
             setLoadingProfile(true);
-            let user = propUserData;
-            if (!user) {
-                // Try cache first
-                const cachedUser = await AsyncStorage.getItem('user');
-                if (cachedUser) {
-                    user = JSON.parse(cachedUser);
-                    setInternalUser(user);
-                } else {
-                    const response = await userApi.getProfile();
-                    user = response.data.data || response.data;
-                    setInternalUser(user);
-                    AsyncStorage.setItem('user', JSON.stringify(user));
-                }
+            
+            // Luôn ưu tiên đọc từ bộ nhớ máy trước để lấy ảnh mới nhất vừa đổi
+            const [cachedUser, cachedStudent] = await Promise.all([
+                AsyncStorage.getItem('user'),
+                AsyncStorage.getItem('student_profile')
+            ]);
+
+            if (cachedUser) {
+                const user = JSON.parse(cachedUser);
+                setInternalUser(user);
+                userCache.setUser(user);
+            }
+            
+            if (cachedStudent) {
+                const student = JSON.parse(cachedStudent);
+                setStudentData(student);
+                userCache.setStudentProfile(student);
             }
 
-            // Only fetch student data if it's missing from props
-            const roleLower = user?.role?.toLowerCase();
-            if ((roleLower === 'student' || roleLower === 'parent') && !propStudentData) {
-                try {
-                    // Try cache first
-                    const cachedStudent = await AsyncStorage.getItem('student_profile');
-                    if (cachedStudent) {
-                        setStudentData(JSON.parse(cachedStudent));
-                    }
+            // Nếu chưa có dữ liệu gì mới gọi API
+            if (!cachedUser || !cachedStudent) {
+                const response = await userApi.getProfile();
+                const user = response.data.data || response.data;
+                setInternalUser(user);
+                userCache.setUser(user);
 
-                    const sRes = await studentApi.getProfile(); 
-                    const sData = sRes.data.data || sRes.data;
-                    setStudentData(sData);
-                    AsyncStorage.setItem('student_profile', JSON.stringify(sData));
-                } catch (e) {
-                    console.log('Không lấy được student profile:', e);
-                }
+                const sRes = await studentApi.getProfile(); 
+                const sData = sRes.data.data || sRes.data;
+                setStudentData(sData);
+                userCache.setStudentProfile(sData);
             }
+
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
@@ -168,14 +186,15 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
 
             <View style={styles.userInfo}>
                 <View style={styles.avatarContainer}>
-                    <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1E293B' : '#e1e8ef' }]}>
+                    <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)' }]}>
                         {avatarUrl ? (
                             <Image 
                                 source={{ uri: avatarUrl }} 
-                                style={{ width: 60, height: 60, borderRadius: 30 }} 
+                                style={styles.avatar}
+                                fadeDuration={0}
                             />
                         ) : (
-                            <Text style={{ fontSize: 32 }}>{role === 'student' ? '🧑‍🎓' : '👨🏽‍🦲'}</Text>
+                            <Ionicons name="person" size={30} color="rgba(255,255,255,0.4)" />
                         )}
                     </View>
                 </View>
@@ -277,19 +296,23 @@ const styles = StyleSheet.create({
         marginTop: 25 
     },
     avatarContainer: {
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.4)',
         borderRadius: 40,
-        padding: 2,
-        marginRight: 15
+        marginRight: 15,
+        overflow: 'hidden'
     },
     avatarPlaceholder: { 
         width: 60, 
         height: 60, 
-        backgroundColor: '#e1e8ef', 
         borderRadius: 30, 
         justifyContent: 'center', 
         alignItems: 'center',
+        overflow: 'hidden'
+    },
+    avatar: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'transparent'
     },
     userTextContent: { flex: 1 },
     userName: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 4 },

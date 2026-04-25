@@ -71,7 +71,11 @@ export default function HomeworkScreen({ navigation }: any) {
                 const data = JSON.parse(cached);
                 setHomeworks(data.homeworks || []);
                 setSubmissions(data.submissions || []);
+                // Hiện dữ liệu từ cache ngay lập tức
                 setLoading(false);
+            } else {
+                // Chỉ hiện loading nếu chưa có gì trong máy
+                setLoading(true);
             }
 
             const studentProfileString = await AsyncStorage.getItem('student_profile');

@@ -6,14 +6,16 @@ import { useLanguage } from '../context/LanguageContext';
 import UserHeader from '../components/UserHeader';
 import { contactApi, userApi, studentApi } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userCache } from '../services/userCache';
 
 export default function ContactScreen({ navigation }: any) {
     const { isDark, theme } = useTheme();
     const { t } = useLanguage();
     const [contacts, setContacts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [userData, setUserData] = useState<any>(null);
-    const [studentInfo, setStudentInfo] = useState<any>(null);
+    const [userData, setUserData] = useState<any>(userCache.getUser());
+    const [studentInfo, setStudentInfo] = useState<any>(userCache.getStudentProfile());
+
     const [hasLoadedCache, setHasLoadedCache] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 

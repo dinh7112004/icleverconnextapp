@@ -66,7 +66,7 @@ export default function LessonDetailScreen({ route, navigation }: any) {
             // Save to cache
             AsyncStorage.setItem(cacheKey, JSON.stringify({ lesson: lessonData, video: video || null, quiz: currentQuiz }));
         } catch (error) {
-            console.error('Error fetching data:', error);
+            console.warn('Lỗi tải dữ liệu hoặc ghi nhận tiến độ:', error);
         } finally {
             setLoading(false);
         }

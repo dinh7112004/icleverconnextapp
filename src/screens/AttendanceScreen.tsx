@@ -28,7 +28,11 @@ export default function AttendanceScreen({ navigation }: any) {
                 const data = JSON.parse(cached);
                 setStats(data.stats);
                 setAttendanceData(data.history);
+                // Nếu có cache, tắt loading ngay để hiện dữ liệu luôn
                 setLoading(false);
+            } else {
+                // Nếu chưa có cache thì mới hiện vòng quay loading
+                setLoading(true);
             }
 
             const studentId = await getCurrentStudentId();

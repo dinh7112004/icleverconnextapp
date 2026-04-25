@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     StyleSheet, Text, View, ScrollView,
-    TouchableOpacity, ActivityIndicator, TextInput, Image, Platform, Alert
+    TouchableOpacity, ActivityIndicator, TextInput, Image, Platform, Alert, DeviceEventEmitter
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
@@ -11,14 +11,64 @@ import { useLanguage } from '../context/LanguageContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 
+import { userCache } from '../services/userCache';
+
+const mapRawToProfile = (rawData: any) => {
+    if (!rawData) return null;
+    return {
+        personal: {
+            fullName: rawData.fullName || rawData.user?.fullName,
+            class: rawData.currentClass?.name || rawData.className || '---',
+            school: rawData.school?.name || rawData.schoolName || '---',
+            studentId: rawData.studentCode,
+            dob: rawData.dateOfBirth ? new Date(rawData.dateOfBirth).toLocaleDateString('vi-VN') : '---',
+            gender: rawData.gender || '---',
+            idCard: rawData.citizenId || '',
+            idIssueDate: rawData.citizenIdIssuedAt ? new Date(rawData.citizenIdIssuedAt).toLocaleDateString('vi-VN') : '',
+            idIssuePlace: rawData.citizenIdIssuedPlace || '',
+            ethnicity: rawData.ethnicity || 'Kinh',
+            hometown: rawData.birthplace || '---',
+            address: rawData.address || 'Chưa cập nhật',
+            phone: rawData.phone || '---',
+            email: rawData.email || '---',
+            avatarUrl: rawData.avatarUrl,
+        },
+        health: {
+            height: rawData.healthInfo?.height?.toString() || '',
+            weight: rawData.healthInfo?.weight?.toString() || '',
+            bloodType: rawData.healthInfo?.bloodType || '---',
+            vision: rawData.healthInfo?.vision || '---',
+            insuranceId: rawData.healthInfo?.insuranceId || '---',
+            importantNote: rawData.healthInfo?.importantNote || 'Không có lưu ý đặc biệt',
+        },
+        contacts: {
+            father: {
+                name: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.fullName || '---',
+                phone: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.phone || '---',
+                job: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.occupation || '---'
+            },
+            mother: {
+                name: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.fullName || '---',
+                phone: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.phone || '---',
+                job: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.occupation || '---'
+            }
+        }
+    };
+};
+
 export default function StudentProfileScreen({ navigation }: any) {
     const { isDark, theme } = useTheme();
     const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState(1);
-    const [profile, setProfile] = useState<any>(null);
-    const [editedProfile, setEditedProfile] = useState<any>(null);
+    
+    // Khởi tạo ĐỒNG BỘ từ RAM
+    const initialRaw = userCache.getStudentProfile();
+    const initialProfile = mapRawToProfile(initialRaw);
+    
+    const [profile, setProfile] = useState<any>(initialProfile);
+    const [editedProfile, setEditedProfile] = useState<any>(initialProfile ? JSON.parse(JSON.stringify(initialProfile)) : null);
     const [isEditing, setIsEditing] = useState(false);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!initialProfile);
 
     useEffect(() => {
         fetchProfile();
@@ -26,78 +76,45 @@ export default function StudentProfileScreen({ navigation }: any) {
 
     const fetchProfile = async () => {
         try {
-            const cached = await AsyncStorage.getItem('student_profile');
-            let cachedData = null;
-            if (cached) {
-                cachedData = JSON.parse(cached);
-                setProfile(cachedData);
-                setEditedProfile(JSON.parse(JSON.stringify(cachedData)));
+            // 1. Kiểm tra kho RAM trước, nếu có thì dùng luôn (Gần như 0ms)
+            const ramData = userCache.getStudentProfile();
+            if (ramData) {
+                const mapped = mapRawToProfile(ramData);
+                setProfile(mapped);
+                setEditedProfile(JSON.parse(JSON.stringify(mapped)));
                 setLoading(false);
+            } else {
+                // 2. Nếu RAM chưa có (vừa mở App), kiểm tra máy (AsyncStorage)
+                const cached = await AsyncStorage.getItem('student_profile');
+                if (cached) {
+                    const cachedData = JSON.parse(cached);
+                    setProfile(cachedData);
+                    setEditedProfile(JSON.parse(JSON.stringify(cachedData)));
+                    setLoading(false);
+                }
             }
 
+            // 3. Luôn lấy dữ liệu mới nhất từ Server để cập nhật RAM & Máy
             const response = await studentApi.getProfile();
             const rawData = response.data.data || response.data;
             
-            // Nếu cache có avatar mới hơn (hoặc do vừa upload), ưu tiên dùng cache
-            const finalAvatarUrl = rawData.avatarUrl;
+            const mappedProfile = mapRawToProfile(rawData);
             
-            const mappedProfile = {
-                personal: {
-                    fullName: rawData.fullName || rawData.user?.fullName,
-                    class: rawData.currentClass?.name || '---',
-                    school: rawData.school?.name || '---',
-                    studentId: rawData.studentCode,
-                    dob: rawData.dateOfBirth ? new Date(rawData.dateOfBirth).toLocaleDateString('vi-VN') : '---',
-                    gender: rawData.gender || '---',
-                    idCard: rawData.citizenId || '',
-                    idIssueDate: rawData.citizenIdIssuedAt ? new Date(rawData.citizenIdIssuedAt).toLocaleDateString('vi-VN') : '',
-                    idIssuePlace: rawData.citizenIdIssuedPlace || '',
-                    ethnicity: rawData.ethnicity || 'Kinh',
-                    hometown: rawData.birthplace || '---',
-                    address: rawData.address || 'Chưa cập nhật',
-                    phone: rawData.phone || '---',
-                    email: rawData.email || '---',
-                    avatarUrl: finalAvatarUrl,
-                },
-                health: {
-                    height: rawData.healthInfo?.height?.toString() || '',
-                    weight: rawData.healthInfo?.weight?.toString() || '',
-                    bloodType: rawData.healthInfo?.bloodType || '---',
-                    vision: rawData.healthInfo?.vision || '---',
-                    insuranceId: rawData.healthInfo?.insuranceId || '---',
-                    importantNote: rawData.healthInfo?.importantNote || 'Không có lưu ý đặc biệt',
-                },
-                contacts: {
-                    father: {
-                        name: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.fullName || '---',
-                        phone: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.phone || '---',
-                        job: rawData.parents?.find((p: any) => p.relationship === 'Cha' || p.relationship === 'father' || p.relationship === 'Parent')?.occupation || '---'
-                    },
-                    mother: {
-                        name: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.fullName || '---',
-                        phone: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.phone || '---',
-                        job: rawData.parents?.find((p: any) => p.relationship === 'Mẹ' || p.relationship === 'mother')?.occupation || '---'
-                    }
-                }
-            };
-
-            // Tránh ghi đè avatar vừa upload nếu API chưa cập nhật kịp
-            if (cachedData && cachedData.personal?.avatarUrl && !mappedProfile.personal.avatarUrl?.includes(cachedData.personal.avatarUrl)) {
-                 // Giữ lại avatar từ cache nếu nó có timestamp (vừa upload)
-                 if (cachedData.personal.avatarUrl.includes('?t=')) {
-                     mappedProfile.personal.avatarUrl = cachedData.personal.avatarUrl;
-                 }
-            }
-            
+            // Cập nhật lại giao diện
             setProfile(mappedProfile);
             setEditedProfile(JSON.parse(JSON.stringify(mappedProfile)));
-            AsyncStorage.setItem('student_profile', JSON.stringify(mappedProfile));
+            
+            // LƯU DỮ LIỆU THÔ ĐỂ CÁC MÀN HÌNH KHÁC ĐỌC ĐƯỢC
+            userCache.setStudentProfile(rawData);
+            AsyncStorage.setItem('student_profile', JSON.stringify(rawData));
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
             setLoading(false);
         }
     };
+
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
     const handlePickAvatar = async () => {
         try {
@@ -110,43 +127,94 @@ export default function StudentProfileScreen({ navigation }: any) {
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const selectedImage = result.assets[0];
-                setLoading(true);
+                const localUri = selectedImage.uri;
 
+                // 1. CẬP NHẬT "TỨC THÌ" (INSTANT UI)
+                const instantProfile = {
+                    ...profile,
+                    personal: { ...profile.personal, avatarUrl: localUri }
+                };
+                setProfile(instantProfile);
+                setEditedProfile(JSON.parse(JSON.stringify(instantProfile)));
+                setIsUploadingAvatar(true); // Hiện loading
+                
+                // Cập nhật ngay vào RAM & Máy để giữ ảnh kể cả khi lỗi mạng
+                const rawData = userCache.getStudentProfile();
+                if (rawData) {
+                    rawData.avatarUrl = localUri;
+                    userCache.setStudentProfile(rawData);
+                    await AsyncStorage.setItem('student_profile', JSON.stringify(rawData));
+                }
+                const storedUser = await AsyncStorage.getItem('user');
+                if (storedUser) {
+                    const userObj = JSON.parse(storedUser);
+                    userObj.avatarUrl = localUri;
+                    userCache.setUser(userObj);
+                    await AsyncStorage.setItem('user', JSON.stringify(userObj));
+                }
+                
+                DeviceEventEmitter.emit('refresh_user_profile');
+
+                // 2. Upload ngầm
                 const formData = new FormData();
                 formData.append('file', {
-                    uri: Platform.OS === 'ios' ? selectedImage.uri.replace('file://', '') : selectedImage.uri,
+                    uri: localUri,
                     type: 'image/jpeg',
                     name: 'avatar.jpg',
                 } as any);
 
-                const uploadResponse = await uploadApi.post(formData, 'avatars');
-                const newAvatarUrl = `${uploadResponse.data.url}?t=${Date.now()}`;
-                await studentApi.updateProfile({ avatarUrl: uploadResponse.data.url });
+                // Snapshot profile tại thời điểm bấm để tránh stale closure
+                const profileSnapshot = instantProfile;
 
-                const updatedProfile = {
-                    ...profile,
-                    personal: { ...profile.personal, avatarUrl: newAvatarUrl }
-                };
-                setProfile(updatedProfile);
-                setEditedProfile(JSON.parse(JSON.stringify(updatedProfile)));
-                
-                await AsyncStorage.setItem('student_profile', JSON.stringify(updatedProfile));
-                const storedUser = await AsyncStorage.getItem('user');
-                if (storedUser) {
-                    const userObj = JSON.parse(storedUser);
-                    userObj.avatarUrl = newAvatarUrl;
-                    await AsyncStorage.setItem('user', JSON.stringify(userObj));
+                try {
+                    const uploadResponse = await uploadApi.post(formData, 'avatars');
+
+                    // Kiểm tra backend có trả về url không
+                    if (!uploadResponse.data?.url) {
+                        throw new Error(`Backend không trả về url. Response: ${JSON.stringify(uploadResponse.data)}`);
+                    }
+
+                    const serverUrl = uploadResponse.data.url;
+                    const finalAvatarUrl = `${serverUrl}?t=${Date.now()}`;
+                    await studentApi.updateProfile({ avatarUrl: serverUrl });
+
+                    // Thành công -> Cập nhật link server vào cache
+                    const currentRaw = userCache.getStudentProfile();
+                    if (currentRaw) {
+                        currentRaw.avatarUrl = finalAvatarUrl;
+                        userCache.setStudentProfile(currentRaw, true);
+                        await AsyncStorage.setItem('student_profile', JSON.stringify(currentRaw));
+                    }
+                    
+                    const currentUser = userCache.getUser();
+                    if (currentUser) {
+                        currentUser.avatarUrl = finalAvatarUrl;
+                        userCache.setUser(currentUser, true);
+                        await AsyncStorage.setItem('user', JSON.stringify(currentUser));
+                    }
+
+                    // Cập nhật lại giao diện với link server
+                    setProfile({
+                        ...profileSnapshot,
+                        personal: { ...profileSnapshot.personal, avatarUrl: finalAvatarUrl }
+                    });
+                    DeviceEventEmitter.emit('refresh_user_profile');
+                } catch (err: any) {
+                    console.log('Upload failed:', err);
+                    // Hiện thông báo lỗi để dễ debug
+                    const errMsg = err?.response?.data?.message || err?.message || 'Không rõ lỗi';
+                    Alert.alert('Upload thất bại', `Không thể tải ảnh lên server.\n\nLỗi: ${errMsg}`);
+                } finally {
+                    setIsUploadingAvatar(false);
                 }
-                
-                Alert.alert(t('common.success'), t('profile.avatarUpdated'));
             }
         } catch (error) {
             console.error('Error picking avatar:', error);
-            Alert.alert(t('common.error'), t('profile.avatarUpdateFailed'));
-        } finally {
-            setLoading(false);
+            setIsUploadingAvatar(false);
         }
     };
+
+
 
     const handleUpdateField = (section: string, field: string, value: string, subSection?: string) => {
         setEditedProfile((prev: any) => {
@@ -191,6 +259,9 @@ export default function StudentProfileScreen({ navigation }: any) {
 
             await studentApi.updateProfile(apiData);
             AsyncStorage.setItem('student_profile', JSON.stringify(newProfile));
+            
+            // Phát tín hiệu cập nhật tức thì
+            DeviceEventEmitter.emit('refresh_user_profile');
         } catch (error: any) {
             console.error('Error saving profile:', error);
             Alert.alert(t('common.error'), t('profile.syncFailed'));
@@ -449,92 +520,104 @@ export default function StudentProfileScreen({ navigation }: any) {
 
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#0f172a' : '#f8f9fa' }]}>
-            {loading ? (
-                <View style={styles.center}>
-                    <ActivityIndicator size="large" color={theme.primary} />
-                </View>
-            ) : (
-                <View style={{ flex: 1 }}>
-                    <View style={[styles.header, { backgroundColor: isDark ? '#1e293b' : '#1d57e8' }]}>
-                        <SafeAreaView edges={['top']} style={styles.headerSafe}>
-                            <View style={styles.topNav}>
+            <View style={{ flex: 1 }}>
+                <View style={[styles.header, { backgroundColor: isDark ? '#1e293b' : '#1d57e8' }]}>
+                    <SafeAreaView edges={['top']} style={styles.headerSafe}>
+                        <View style={styles.topNav}>
+                            <TouchableOpacity 
+                                onPress={() => navigation.goBack()} 
+                                style={[styles.backBtn, { padding: 10, marginLeft: -10 }]}
+                                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                            >
+                                <Ionicons name="chevron-back" size={28} color="white" />
+                            </TouchableOpacity>
+                            <Text style={styles.headerTitle}>Hồ sơ học sinh</Text>
+                            {isEditing ? (
                                 <TouchableOpacity 
-                                    onPress={() => navigation.goBack()} 
-                                    style={[styles.backBtn, { padding: 10, marginLeft: -10 }]}
-                                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                                    onPress={handleSave} 
+                                    style={[styles.saveBtn, { backgroundColor: 'white' }]}
                                 >
-                                    <Ionicons name="chevron-back" size={28} color="white" />
+                                    <Feather name="save" size={16} color="#1d57e8" style={{ marginRight: 5 }} />
+                                    <Text style={[styles.saveBtnText, { color: '#1d57e8' }]}>Lưu</Text>
                                 </TouchableOpacity>
-                                <Text style={styles.headerTitle}>Hồ sơ học sinh</Text>
-                                {isEditing ? (
-                                    <TouchableOpacity 
-                                        onPress={handleSave} 
-                                        style={[styles.saveBtn, { backgroundColor: 'white' }]}
-                                    >
-                                        <Feather name="save" size={16} color="#1d57e8" style={{ marginRight: 5 }} />
-                                        <Text style={[styles.saveBtnText, { color: '#1d57e8' }]}>Lưu</Text>
-                                    </TouchableOpacity>
-                                ) : (
-                                    <TouchableOpacity 
-                                        onPress={() => setIsEditing(true)} 
-                                        style={[styles.editBtnCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)' }]}
-                                    >
-                                        <Feather name="edit" size={18} color="white" />
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-
-                            <View style={styles.userInfo}>
-                                <View style={styles.avatarWrapper}>
-                                    <View style={styles.avatarCircle}>
-                                        {profile?.personal?.avatarUrl ? (
-                                            <Image source={{ uri: profile.personal.avatarUrl }} style={styles.avatarImage} />
-                                        ) : (
-                                            <Text style={{ fontSize: 50 }}>🧑‍🎓</Text>
-                                        )}
-                                    </View>
-                                    <TouchableOpacity style={styles.cameraBtn} onPress={handlePickAvatar}>
-                                        <Ionicons name="camera" size={18} color="#1d57e8" />
-                                    </TouchableOpacity>
-                                </View>
-                                <Text style={styles.userNameText}>{profile?.personal?.fullName}</Text>
-                                <Text style={styles.userSubText}>
-                                    Lớp {profile?.personal?.class || '---'} • Trường {profile?.personal?.school || '---'}
-                                </Text>
-                            </View>
-                        </SafeAreaView>
-                    </View>
-
-                    <View style={styles.tabBarWrapper}>
-                        <View style={[styles.tabBar, { backgroundColor: isDark ? '#1e293b' : 'white' }]}>
-                            <TouchableOpacity
-                                style={[styles.tabItem, activeTab === 1 && styles.activeTab]}
-                                onPress={() => setActiveTab(1)}
-                            >
-                                <Text style={[styles.tabText, activeTab === 1 ? styles.activeTabText : { color: theme.textSecondary }]}>Thông tin</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.tabItem, activeTab === 2 && styles.activeTab]}
-                                onPress={() => setActiveTab(2)}
-                            >
-                                <Text style={[styles.tabText, activeTab === 2 ? styles.activeTabText : { color: theme.textSecondary }]}>Sức khỏe</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.tabItem, activeTab === 3 && styles.activeTab]}
-                                onPress={() => setActiveTab(3)}
-                            >
-                                <Text style={[styles.tabText, activeTab === 3 ? styles.activeTabText : { color: theme.textSecondary }]}>Liên hệ</Text>
-                            </TouchableOpacity>
+                            ) : (
+                                <TouchableOpacity 
+                                    onPress={() => setIsEditing(true)} 
+                                    style={[styles.editBtnCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)' }]}
+                                >
+                                    <Feather name="edit" size={18} color="white" />
+                                </TouchableOpacity>
+                            )}
                         </View>
-                    </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
-                        {activeTab === 1 && renderPersonalInfo()}
-                        {activeTab === 2 && renderHealthInfo()}
-                        {activeTab === 3 && renderContactInfo()}
-                    </ScrollView>
+                        <View style={styles.userInfo}>
+                            <View style={styles.avatarWrapper}>
+                                <View style={styles.avatarCircle}>
+                                    {profile?.personal?.avatarUrl ? (
+                                        <Image 
+                                            key={profile.personal.avatarUrl}
+                                            source={{ uri: profile.personal.avatarUrl }} 
+                                            style={styles.avatarImage} 
+                                            fadeDuration={0}
+                                        />
+                                    ) : (
+                                        <View style={{ width: '100%', height: '100%', backgroundColor: '#e1e8ef', justifyContent: 'center', alignItems: 'center' }}>
+                                            <Ionicons name="person" size={50} color="#94a3b8" />
+                                        </View>
+                                    )}
+
+                                    {(loading || isUploadingAvatar) && (
+                                        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }]}>
+                                            <ActivityIndicator color="white" />
+                                        </View>
+                                    )}
+                                </View>
+                                <TouchableOpacity style={styles.cameraBtn} onPress={handlePickAvatar} disabled={isUploadingAvatar}>
+                                    {isUploadingAvatar ? (
+                                        <ActivityIndicator size="small" color="#1d57e8" />
+                                    ) : (
+                                        <Ionicons name="camera" size={18} color="#1d57e8" />
+                                    )}
+                                </TouchableOpacity>
+
+                            </View>
+                            <Text style={styles.userNameText}>{profile?.personal?.fullName || '---'}</Text>
+                            <Text style={styles.userSubText}>
+                                Lớp {profile?.personal?.class || '---'} • Trường {profile?.personal?.school || '---'}
+                            </Text>
+                        </View>
+                    </SafeAreaView>
                 </View>
-            )}
+
+                <View style={styles.tabBarWrapper}>
+                    <View style={[styles.tabBar, { backgroundColor: isDark ? '#1e293b' : 'white' }]}>
+                        <TouchableOpacity
+                            style={[styles.tabItem, activeTab === 1 && styles.activeTab]}
+                            onPress={() => setActiveTab(1)}
+                        >
+                            <Text style={[styles.tabText, activeTab === 1 ? styles.activeTabText : { color: theme.textSecondary }]}>Thông tin</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.tabItem, activeTab === 2 && styles.activeTab]}
+                            onPress={() => setActiveTab(2)}
+                        >
+                            <Text style={[styles.tabText, activeTab === 2 ? styles.activeTabText : { color: theme.textSecondary }]}>Sức khỏe</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.tabItem, activeTab === 3 && styles.activeTab]}
+                            onPress={() => setActiveTab(3)}
+                        >
+                            <Text style={[styles.tabText, activeTab === 3 ? styles.activeTabText : { color: theme.textSecondary }]}>Liên hệ</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
+                    {activeTab === 1 && renderPersonalInfo()}
+                    {activeTab === 2 && renderHealthInfo()}
+                    {activeTab === 3 && renderContactInfo()}
+                </ScrollView>
+            </View>
         </View>
     );
 }

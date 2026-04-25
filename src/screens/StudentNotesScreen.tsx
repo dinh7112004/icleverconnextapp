@@ -273,8 +273,22 @@ export default function StudentNotesScreen({ navigation }: any) {
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 16 }}>
+                {schoolNotice && (
+                    <View style={[styles.schoolNoticeCard, { backgroundColor: isDark ? '#1e3a8a' : '#ebf4ff', borderColor: isDark ? '#1e40af' : '#bbdefb', marginBottom: 16 }]}>
+                        <View style={styles.cardHeaderNew}>
+                            <View style={[styles.iconBoxNew, { backgroundColor: isDark ? '#2D3748' : 'white' }]}>
+                                <MaterialCommunityIcons name="heart-pulse" size={22} color={isDark ? '#60A5FA' : '#3498db'} />
+                            </View>
+                            <Text style={[styles.noteTypeTitleNew, { color: isDark ? '#93c5fd' : '#1a237e' }]}>{schoolNotice.title || 'Lưu ý từ nhà trường'}</Text>
+                        </View>
+                        <Text style={[styles.schoolNoticeContent, { color: isDark ? '#bfdbfe' : '#1a237e' }]}>
+                            {schoolNotice.content}
+                        </Text>
+                    </View>
+                )}
+
                 {notes.length === 0 && !loading && (
-                    <View style={styles.emptyContainer}>
+                    <View style={[styles.emptyContainer, { marginTop: schoolNotice ? 40 : 100 }]}>
                         <MaterialIcons name="note-add" size={80} color={isDark ? '#2D3748' : '#ecf0f1'} />
                         <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Chưa có lưu ý sức khỏe nào cho học sinh này.</Text>
                     </View>
@@ -315,22 +329,9 @@ export default function StudentNotesScreen({ navigation }: any) {
                         </View>
                     );
                 })}
-
-                {schoolNotice && (
-                    <View style={[styles.schoolNoticeCard, { backgroundColor: isDark ? '#1e3a8a' : '#ebf4ff', borderColor: isDark ? '#1e40af' : '#bbdefb' }]}>
-                        <View style={styles.cardHeaderNew}>
-                            <View style={[styles.iconBoxNew, { backgroundColor: isDark ? '#2D3748' : 'white' }]}>
-                                <MaterialCommunityIcons name="heart-pulse" size={22} color={isDark ? '#60A5FA' : '#3498db'} />
-                            </View>
-                            <Text style={[styles.noteTypeTitleNew, { color: isDark ? '#93c5fd' : '#1a237e' }]}>{schoolNotice.title || 'Lưu ý từ nhà trường'}</Text>
-                        </View>
-                        <Text style={[styles.schoolNoticeContent, { color: isDark ? '#bfdbfe' : '#1a237e' }]}>
-                            {schoolNotice.content}
-                        </Text>
-                    </View>
-                )}
                 <View style={{ height: 40 }} />
             </ScrollView>
+
         </SafeAreaView>
     );
 }

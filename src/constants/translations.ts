@@ -61,6 +61,9 @@ export const translations = {
             issueDate: 'Ngày cấp',
             issuePlace: 'Nơi cấp',
             contact: 'Liên lạc',
+            avatarUpdated: 'Đã cập nhật ảnh đại diện thành công!',
+            avatarUpdateFailed: 'Cập nhật ảnh đại diện thất bại, vui lòng thử lại.',
+            syncFailed: 'Không thể đồng bộ dữ liệu với máy chủ.',
         },
         home: {
             lessons: 'Bài học',
@@ -216,6 +219,9 @@ export const translations = {
             issueDate: 'Issue Date',
             issuePlace: 'Issue Place',
             contact: 'Contact Info',
+            avatarUpdated: 'Avatar updated successfully!',
+            avatarUpdateFailed: 'Failed to update avatar, please try again.',
+            syncFailed: 'Could not sync data with server.',
         },
         home: {
             lessons: 'Lessons',
