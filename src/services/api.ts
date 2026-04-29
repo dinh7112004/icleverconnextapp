@@ -10,8 +10,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userCache } from './userCache';
 
 // ─── Configuration ──────────────────────────────────────────────
-// export const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local mới nhất
-export const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (Dùng khi build)
+export const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local mới nhất
+// export const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (Dùng khi build)
 
 /**
  * Resolve absolute URL for images from relative paths

@@ -37,7 +37,7 @@ export default function ContactScreen({ navigation }: any) {
 
             // 3. Fetch fresh data in background
             fetchContacts(false);
-            
+
             // Sync profile in background
             userApi.getProfile().then(res => {
                 const fresh = res.data.data || res.data;
@@ -45,7 +45,7 @@ export default function ContactScreen({ navigation }: any) {
                     setUserData(fresh);
                     AsyncStorage.setItem('user', JSON.stringify(fresh));
                 }
-            }).catch(() => {});
+            }).catch(() => { });
         };
 
         initialize();
@@ -59,15 +59,15 @@ export default function ContactScreen({ navigation }: any) {
     const fetchContacts = async (showLoading = true) => {
         try {
             if (showLoading) setLoading(true);
-            
+
             // Get classId from latest available source
             const userStr = await AsyncStorage.getItem('user');
             const user = userStr ? JSON.parse(userStr) : userData;
             const studentStr = await AsyncStorage.getItem('student_profile');
             const student = studentStr ? JSON.parse(studentStr) : studentInfo;
-            
+
             const classId = user?.classId || student?.currentClassId || '';
-            
+
             if (!classId) {
                 setLoading(false);
                 setRefreshing(false);
@@ -77,21 +77,21 @@ export default function ContactScreen({ navigation }: any) {
             const response = await contactApi.getAll(classId);
             const result = response.data;
             let rawData = [];
-            
+
             if (result && result.success) {
                 const payload = result.data;
                 rawData = Array.isArray(payload) ? payload : (payload?.data || []);
             }
-            
+
             const mappedData = rawData.map((t: any) => ({
                 id: t.id || t._id,
                 userId: t.userId || t.user?.id || t.id,
                 name: t.fullName || t.user?.fullName || 'Giáo viên',
                 role: t.specialization || 'Giáo viên',
                 avatarUrl: t.user?.avatarUrl || t.avatarUrl,
-                isMainTeacher: t.isHomeroomTeacher || false 
+                isMainTeacher: t.isHomeroomTeacher || false
             }));
-            
+
             setContacts(mappedData);
             await AsyncStorage.setItem('contacts_cache', JSON.stringify(mappedData));
         } catch (error) {
@@ -106,7 +106,7 @@ export default function ContactScreen({ navigation }: any) {
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <UserHeader userData={userData} studentInfo={studentInfo} isReady={hasLoadedCache} />
 
-            <ScrollView 
+            <ScrollView
                 showsVerticalScrollIndicator={false}
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -145,7 +145,7 @@ export default function ContactScreen({ navigation }: any) {
                                     <TouchableOpacity style={[styles.actionBtn, styles.callBtn, { backgroundColor: isDark ? '#064e3b' : '#f0fdf4' }]}>
                                         <Ionicons name="call" size={18} color="#22c55e" />
                                     </TouchableOpacity>
-                                    <TouchableOpacity 
+                                    <TouchableOpacity
                                         style={[styles.actionBtn, styles.chatBtn, { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}
                                         onPress={() => {
                                             const otherUser = {
@@ -153,9 +153,9 @@ export default function ContactScreen({ navigation }: any) {
                                                 fullName: item.name,
                                                 avatarUrl: item.avatarUrl
                                             };
-                                            navigation.navigate('ChatDetail', { 
+                                            navigation.navigate('ChatDetail', {
                                                 otherUser,
-                                                studentId: studentInfo?.id 
+                                                studentId: studentInfo?.id
                                             });
                                         }}
                                     >

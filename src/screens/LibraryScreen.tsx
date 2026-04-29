@@ -69,7 +69,6 @@ export default function LibraryScreen({ navigation }: any) {
     const fetchBooks = useCallback(async (isRefresh = false) => {
         if (!isRefresh && books.length === 0) setLoading(true);
         try {
-            // Cache lookup
             const cacheKey = `${CACHE_KEY}${activeCategory}`;
             if (!isRefresh && books.length === 0) {
                 const cached = await AsyncStorage.getItem(cacheKey);
@@ -86,6 +85,7 @@ export default function LibraryScreen({ navigation }: any) {
             if (response.data && response.data.success) {
                 const innerData = response.data.data;
                 booksData = Array.isArray(innerData?.data) ? innerData.data : (Array.isArray(innerData) ? innerData : []);
+                console.log('[Library] Received books:', booksData.map((b: any) => ({ title: b.title, url: b.imageUrl })));
             }
             setBooks(booksData);
             AsyncStorage.setItem(cacheKey, JSON.stringify(booksData));

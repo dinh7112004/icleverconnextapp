@@ -50,8 +50,8 @@ const ActivityItem = React.memo(({ item, currentUser, theme, isDark, onLike, onS
             {/* Image Section */}
             <View style={styles.mediaContainer}>
                 {item.data?.imageUrl && !imageError ? (
-                    <Image 
-                        source={{ uri: item.data.imageUrl }} 
+                    <Image
+                        source={{ uri: item.data.imageUrl }}
                         style={styles.mainImage}
                         resizeMode="cover"
                         onError={onImageError}
@@ -125,7 +125,7 @@ export default function ActivitiesScreen({ navigation }: any) {
             if (userStr) {
                 const user = JSON.parse(userStr);
                 setCurrentUser(user);
-                
+
                 // Background update profile
                 userApi.getProfile().then(res => {
                     const freshUser = res.data.data || res.data;
@@ -133,12 +133,12 @@ export default function ActivitiesScreen({ navigation }: any) {
                         setCurrentUser(freshUser);
                         AsyncStorage.setItem('user', JSON.stringify(freshUser));
                     }
-                }).catch(() => {});
+                }).catch(() => { });
 
                 const studentRes = await studentApi.getProfile();
                 setStudentInfo(studentRes.data.data || studentRes.data);
             }
-        } catch (error) {}
+        } catch (error) { }
     }, []);
 
     const fetchActivities = useCallback(async (isRefresh = false) => {
@@ -161,7 +161,7 @@ export default function ActivitiesScreen({ navigation }: any) {
             let data = response.data;
             while (data.data && !Array.isArray(data)) data = data.data;
             let list = Array.isArray(data) ? data : [];
-            
+
             setActivities(list);
             AsyncStorage.setItem(cacheKey, JSON.stringify(list));
         } catch (error) {
@@ -220,7 +220,7 @@ export default function ActivitiesScreen({ navigation }: any) {
     const handleShare = async (item: any) => {
         try {
             await Share.share({ title: item.title, message: `${item.title}\n\n${item.message}` });
-        } catch (error) {}
+        } catch (error) { }
     };
 
     const getRoleLabel = (role?: string) => {
@@ -233,7 +233,7 @@ export default function ActivitiesScreen({ navigation }: any) {
     };
 
     const renderItem = useCallback(({ item }: any) => (
-        <ActivityItem 
+        <ActivityItem
             item={item}
             currentUser={currentUser}
             theme={theme}
@@ -242,9 +242,9 @@ export default function ActivitiesScreen({ navigation }: any) {
             onShare={handleShare}
             onToggleComments={(id: string) => {
                 const item = activities.find(a => a._id === id);
-                navigation.navigate('Comment', { 
-                    activityId: id, 
-                    initialComments: item?.comments || [] 
+                navigation.navigate('Comment', {
+                    activityId: id,
+                    initialComments: item?.comments || []
                 });
             }}
             imageError={imageErrors[item._id]}
