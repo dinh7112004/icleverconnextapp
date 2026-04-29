@@ -97,12 +97,19 @@ export default function AIScreen() {
             }
 
             // Xử lý thời khoá biểu hôm nay
+            const today = new Date();
+            const dayOfWeek = today.getDay();
+            const dayFullNames: Record<number, string> = {
+                0: 'Chủ Nhật', 1: 'Thứ Hai', 2: 'Thứ Ba',
+                3: 'Thứ Tư', 4: 'Thứ Năm', 5: 'Thứ Sáu', 6: 'Thứ Bảy'
+            };
+            const todayNameFull = dayFullNames[dayOfWeek];
+
             let todayScheduleText = '';
             let todaySubjects: string[] = [];
+
             if (timetableRes.status === 'fulfilled') {
                 const timetableData = timetableRes.value.data?.data || timetableRes.value.data || [];
-                const today = new Date();
-                const dayOfWeek = today.getDay(); // 0=CN, 1=T2...
                 const dayNames: Record<number, string> = {
                     0: 'Chủ Nhật', 1: 'Thứ 2', 2: 'Thứ 3',
                     3: 'Thứ 4', 4: 'Thứ 5', 5: 'Thứ 6', 6: 'Thứ 7'
@@ -112,8 +119,7 @@ export default function AIScreen() {
                 const todaySlots = Array.isArray(timetableData)
                     ? timetableData.filter((slot: any) =>
                         slot.dayOfWeek === todayName ||
-                        slot.day === todayName ||
-                        slot.dayOfWeek === dayOfWeek
+                        slot.day === todayName
                     )
                     : [];
 
@@ -129,9 +135,10 @@ export default function AIScreen() {
 
             // Build system prompt
             const now = new Date();
-            const dateStr = now.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            const dateStr = `${todayNameFull}, ngày ${now.getDate()} tháng ${now.getMonth() + 1} năm ${now.getFullYear()}`;
 
-            const prompt = `NHIỆM VỤ QUAN TRỌNG: Tuyệt đối KHÔNG sử dụng bất kỳ biểu tượng cảm xúc (emoji), icon, hoặc ký tự hình ảnh nào (ví dụ: 🚀, ✨, 📚...) trong câu trả lời. Chỉ sử dụng văn bản thuần túy. Đây là yêu cầu bắt buộc để đảm bảo tính chuyên nghiệp.
+            const prompt = `NHIỆM VỤ QUAN TRỌNG: Tuyệt đối KHÔNG sử dụng bất kỳ biểu tượng cảm xúc (emoji), icon, hoặc ký tự hình ảnh nào trong câu trả lời. Chỉ sử dụng văn bản thuần túy.
+LƯU Ý: Hôm nay là ${todayNameFull} (${dateStr}). Bạn phải trả lời đúng lịch học của ngày này.
 
 Bạn là trợ lý AI thông minh tích hợp trong ứng dụng "iClever Connect", chuyên hỗ trợ học sinh và phụ huynh.
 Bạn có kiến thức sâu rộng về toàn bộ tính năng của ứng dụng này.

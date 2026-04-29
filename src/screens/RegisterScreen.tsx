@@ -73,9 +73,9 @@ export default function RegisterScreen({ navigation }: any) {
 
     return (
         <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'position' : 'height'}
-            style={[styles.container, { backgroundColor: theme.background }]}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
+            behavior={Platform.OS === 'ios' ? 'position' : undefined}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
         >
             <ScrollView 
                 contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]} 

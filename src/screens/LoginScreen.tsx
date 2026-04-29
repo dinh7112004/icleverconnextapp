@@ -144,9 +144,9 @@ export default function LoginScreen({ navigation }: any) {
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top', 'bottom']}>
             <StatusBar style={isDark ? 'light' : 'dark'} />
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={[styles.container, { backgroundColor: theme.background }]}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                behavior={Platform.OS === 'ios' ? 'position' : undefined}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
             >
                 <ScrollView 
                     contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]} 

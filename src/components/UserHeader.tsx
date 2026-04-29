@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuScreen from '../screens/MenuScreen';
-import { userApi, studentApi } from '../services/api';
+import { userApi, studentApi, getImageUrl } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { userCache } from '../services/userCache';
 
@@ -230,7 +230,7 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
                     <View style={[styles.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
                         {avatarUrl ? (
                             <Image 
-                                source={{ uri: avatarUrl }} 
+                                source={{ uri: getImageUrl(avatarUrl) }} 
                                 style={styles.avatar}
                                 fadeDuration={0}
                             />

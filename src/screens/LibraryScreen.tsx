@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { libraryApi } from '../services/api';
+import { libraryApi, getImageUrl } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -23,7 +23,7 @@ const BookItem = React.memo(({ item, theme, isDark, onSelect }: any) => (
         onPress={() => onSelect(item)}
     >
         <View style={styles.imageContainer}>
-            <Image source={{ uri: item.imageUrl }} style={styles.bookCover} />
+            <Image source={{ uri: getImageUrl(item.imageUrl) }} style={styles.bookCover} />
             {item.status === 'Đang mượn' && (
                 <View style={styles.statusBadge}>
                     <Text style={styles.statusText}>ĐANG MƯỢN</Text>
@@ -155,7 +155,7 @@ export default function LibraryScreen({ navigation }: any) {
                         </TouchableOpacity>
                         <ScrollView showsVerticalScrollIndicator={false}>
                             <View style={[styles.modalHeader, { backgroundColor: isDark ? '#1E293B' : '#f8fafc' }]}>
-                                <Image source={{ uri: selectedBook?.imageUrl }} style={styles.modalImage} />
+                                <Image source={{ uri: getImageUrl(selectedBook?.imageUrl) }} style={styles.modalImage} />
                             </View>
                             <View style={styles.modalContent}>
                                 <Text style={styles.modalCategory}>{selectedBook?.category}</Text>

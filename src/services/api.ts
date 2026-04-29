@@ -10,8 +10,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userCache } from './userCache';
 
 // ─── Configuration ──────────────────────────────────────────────
-const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local mới nhất
-// const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (Dùng khi build)
+// export const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local mới nhất
+export const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (Dùng khi build)
+
+/**
+ * Resolve absolute URL for images from relative paths
+ */
+export const getImageUrl = (url?: string) => {
+    if (!url) return undefined;
+    if (url.startsWith('http')) return url;
+    const domain = BASE_URL.replace('/api/v1', '');
+    return `${domain}${url.startsWith('/') ? '' : '/'}${url}`;
+};
 
 
 // ─── Axios Instance ─────────────────────────────────────────────
