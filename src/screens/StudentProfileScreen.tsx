@@ -526,8 +526,8 @@ export default function StudentProfileScreen({ navigation }: any) {
                         <View style={styles.topNav}>
                             <TouchableOpacity 
                                 onPress={() => navigation.goBack()} 
-                                style={[styles.backBtn, { padding: 10, marginLeft: -10 }]}
-                                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                                style={styles.backBtn}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             >
                                 <Ionicons name="chevron-back" size={28} color="white" />
                             </TouchableOpacity>
@@ -638,12 +638,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         height: 60,
+        zIndex: 10,
     },
     backBtn: { 
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
         justifyContent: 'center',
         alignItems: 'center',
+        zIndex: 10,
     },
     headerTitle: {
         fontSize: 18,

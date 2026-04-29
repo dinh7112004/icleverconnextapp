@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
-    StyleSheet, Text, View, ScrollView, SafeAreaView,
+    StyleSheet, Text, View, ScrollView,
     TouchableOpacity
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomSwitch from '../components/CustomSwitch';
 
@@ -12,6 +13,7 @@ import { useLanguage } from '../context/LanguageContext';
 export default function GeneralSettingsScreen({ navigation }: any) {
     const { isDark, toggleTheme, theme } = useTheme();
     const { t, language } = useLanguage();
+    const insets = useSafeAreaInsets();
     const [biometrics, setBiometrics] = useState(true);
 
     const renderSettingItem = (
@@ -41,7 +43,7 @@ export default function GeneralSettingsScreen({ navigation }: any) {
     );
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
             <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Ionicons name="chevron-back" size={28} color={theme.text} />
@@ -102,7 +104,7 @@ export default function GeneralSettingsScreen({ navigation }: any) {
                     <Text style={styles.footerSubText}>{t('settings.version')} 2.5.1 (Build 20240915)</Text>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -120,7 +122,7 @@ const styles = StyleSheet.create({
     },
     backBtn: { padding: 8 },
     headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50' },
-    scrollContent: { padding: 16 },
+    scrollContent: { padding: 16, paddingBottom: 24 },
     sectionTitle: { fontSize: 13, fontWeight: 'bold', color: '#95a5a6', marginBottom: 15, paddingLeft: 5 },
     card: {
         backgroundColor: 'white',

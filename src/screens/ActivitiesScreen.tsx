@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
-    SafeAreaView, ActivityIndicator, Image, FlatList, Dimensions, TextInput, Share, Alert, KeyboardAvoidingView, Platform, RefreshControl
+    SafeAreaView, ActivityIndicator, Image, FlatList, Dimensions, TextInput, Share, Alert, KeyboardAvoidingView, Platform, RefreshControl, Keyboard
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { newsApi, studentApi, userApi } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -12,7 +13,7 @@ import { useTheme } from '../context/ThemeContext';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Memoized Activity Item for performance
-const ActivityItem = React.memo(({ item, currentUser, theme, isDark, onLike, onComment, onShare, commentText, onCommentTextChange, expanded, onToggleComments, imageError, onImageError, getRoleLabel }: any) => {
+const ActivityItem = React.memo(({ item, currentUser, theme, isDark, onLike, onShare, onToggleComments, imageError, onImageError, getRoleLabel }: any) => {
     const isLiked = useMemo(() => {
         const currentId = currentUser?.id || currentUser?._id;
         return item.likes && currentId && item.likes.includes(currentId);
@@ -68,8 +69,14 @@ const ActivityItem = React.memo(({ item, currentUser, theme, isDark, onLike, onC
             {/* Interaction Row */}
             <View style={styles.interactionRow}>
                 <View style={styles.likesCountRow}>
-                    <Ionicons name="heart" size={16} color="#ef4444" />
-                    <Text style={[styles.interactionText, { color: theme.textSecondary }]}>{likesCount} yêu thích</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 15 }}>
+                        <Ionicons name="heart" size={16} color="#ef4444" />
+                        <Text style={[styles.interactionText, { color: theme.textSecondary }]}>{likesCount}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="chatbubble-outline" size={15} color={theme.textSecondary} />
+                        <Text style={[styles.interactionText, { color: theme.textSecondary }]}>{item.comments?.length || 0}</Text>
+                    </View>
                 </View>
                 <View style={styles.actionButtons}>
                     <TouchableOpacity onPress={() => onLike(item._id)}>
@@ -84,47 +91,6 @@ const ActivityItem = React.memo(({ item, currentUser, theme, isDark, onLike, onC
                 </View>
             </View>
 
-            {/* Comments Section (Toggleable) */}
-            {expanded && (
-                <View style={[styles.commentsListArea, { borderTopColor: theme.border }]}>
-                    {item.comments && item.comments.length > 0 ? (
-                        <View style={styles.commentItems}>
-                            {item.comments.map((c: any, index: number) => (
-                                <View key={index} style={styles.commentEntry}>
-                                    <View style={[styles.commentAvatarMini, { backgroundColor: theme.primary }]}>
-                                        <Text style={styles.commentAvatarText}>{c.userName?.[0] || 'U'}</Text>
-                                    </View>
-                                    <View style={[styles.commentBubble, { backgroundColor: isDark ? '#2D3748' : '#f0f2f5' }]}>
-                                        <Text style={[styles.commentName, { color: theme.text }]}>{c.userName}</Text>
-                                        <Text style={[styles.commentBody, { color: theme.text }]}>{c.content}</Text>
-                                    </View>
-                                </View>
-                            ))}
-                        </View>
-                    ) : (
-                        <Text style={[styles.noCommentsText, { color: theme.textSecondary }]}>Chưa có bình luận nào.</Text>
-                    )}
-
-                    <View style={styles.commentInputRow}>
-                        <View style={[styles.commentInputBox, { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: theme.border }]}>
-                            <TextInput
-                                style={[styles.commentInputField, { color: theme.text }]}
-                                placeholder="Viết bình luận..."
-                                placeholderTextColor={theme.textSecondary}
-                                value={commentText}
-                                onChangeText={onCommentTextChange}
-                            />
-                            <TouchableOpacity onPress={() => onComment(item._id)} disabled={!commentText.trim()}>
-                                <Ionicons 
-                                    name="paper-plane-outline" 
-                                    size={20} 
-                                    color={commentText.trim() ? theme.primary : (isDark ? '#475569' : '#bdc3c7')} 
-                                />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            )}
         </View>
     );
 });
@@ -133,15 +99,25 @@ const CACHE_KEY = 'activities_cache_';
 
 export default function ActivitiesScreen({ navigation }: any) {
     const { isDark, theme } = useTheme();
+    const insets = useSafeAreaInsets();
     const [activeTab, setActiveTab] = useState<'class' | 'school'>('school');
     const [activities, setActivities] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
-    const [commentTexts, setCommentTexts] = useState<Record<string, string>>({});
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [studentInfo, setStudentInfo] = useState<any>(null);
     const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const flatListRef = useRef<FlatList>(null);
+
+    useEffect(() => {
+        const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+            // Không cần setKeyboardHeight nữa
+        });
+        return () => {
+            showSub.remove();
+        };
+    }, []);
 
     const loadInitialData = useCallback(async () => {
         try {
@@ -241,38 +217,6 @@ export default function ActivitiesScreen({ navigation }: any) {
         }
     };
 
-    const handleCommentSubmit = async (id: string) => {
-        const commentText = commentTexts[id];
-        if (!commentText?.trim()) return;
-
-        const userId = currentUser?.id || currentUser?._id;
-        if (!userId) return;
-
-        const newComment = {
-            userId: userId,
-            userName: currentUser.fullName || 'Bạn',
-            content: commentText.trim(),
-            createdAt: new Date().toISOString(),
-        };
-        
-        setActivities(prev => prev.map(act => act._id === id ? { ...act, comments: [...(act.comments || []), newComment] } : act));
-        setCommentTexts(prev => ({ ...prev, [id]: '' }));
-
-        try {
-            const response = await newsApi.comment(id, commentText.trim(), currentUser.fullName, currentUser.avatarUrl, currentUser.role);
-            const updated = response.data.data || response.data;
-            if (updated) {
-                setActivities(prev => {
-                    const newList = prev.map(a => a._id === id ? { ...a, comments: updated.comments } : a);
-                    AsyncStorage.setItem(`${CACHE_KEY}${activeTab}`, JSON.stringify(newList));
-                    return newList;
-                });
-            }
-        } catch (error) {
-            onRefresh();
-        }
-    };
-
     const handleShare = async (item: any) => {
         try {
             await Share.share({ title: item.title, message: `${item.title}\n\n${item.message}` });
@@ -295,17 +239,19 @@ export default function ActivitiesScreen({ navigation }: any) {
             theme={theme}
             isDark={isDark}
             onLike={handleLike}
-            onComment={handleCommentSubmit}
             onShare={handleShare}
-            commentText={commentTexts[item._id] || ''}
-            onCommentTextChange={(t: string) => setCommentTexts(prev => ({ ...prev, [item._id]: t }))}
-            expanded={expandedComments[item._id]}
-            onToggleComments={(id: string) => setExpandedComments(prev => ({ ...prev, [id]: !prev[id] }))}
+            onToggleComments={(id: string) => {
+                const item = activities.find(a => a._id === id);
+                navigation.navigate('Comment', { 
+                    activityId: id, 
+                    initialComments: item?.comments || [] 
+                });
+            }}
             imageError={imageErrors[item._id]}
             onImageError={() => setImageErrors(prev => ({ ...prev, [item._id]: true }))}
             getRoleLabel={getRoleLabel}
         />
-    ), [currentUser, theme, isDark, handleLike, handleCommentSubmit, handleShare, commentTexts, expandedComments, imageErrors]);
+    ), [currentUser, theme, isDark, handleLike, handleShare, imageErrors, activities]);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -326,28 +272,35 @@ export default function ActivitiesScreen({ navigation }: any) {
                 </TouchableOpacity>
             </View>
 
-            {loading && activities.length === 0 ? (
-                <View style={styles.loadingCenter}><ActivityIndicator size="large" color={theme.primary} /></View>
-            ) : (
-                <FlatList
-                    data={activities}
-                    keyExtractor={(item) => item._id}
-                    renderItem={renderItem}
-                    contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                    removeClippedSubviews={true}
-                    initialNumToRender={5}
-                    maxToRenderPerBatch={5}
-                    windowSize={5}
-                    updateCellsBatchingPeriod={30}
-                    ListEmptyComponent={
-                        <View style={styles.emptyBox}>
-                            <MaterialCommunityIcons name="newspaper-variant-outline" size={60} color={isDark ? '#2D3748' : '#dfe6e9'} />
-                            <Text style={[styles.emptyLabel, { color: theme.textSecondary }]}>Chưa có hoạt động mới nào.</Text>
-                        </View>
-                    }
-                />
-            )}
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1, backgroundColor: theme.background }}
+                keyboardVerticalOffset={0}
+            >
+                {loading && activities.length === 0 ? (
+                    <View style={styles.loadingCenter}><ActivityIndicator size="large" color={theme.primary} /></View>
+                ) : (
+                    <FlatList
+                        ref={flatListRef}
+                        data={activities}
+                        keyExtractor={(item) => item._id}
+                        renderItem={renderItem}
+                        contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                        removeClippedSubviews={true}
+                        initialNumToRender={5}
+                        maxToRenderPerBatch={5}
+                        windowSize={5}
+                        updateCellsBatchingPeriod={30}
+                        ListEmptyComponent={
+                            <View style={styles.emptyBox}>
+                                <MaterialCommunityIcons name="newspaper-variant-outline" size={60} color={isDark ? '#2D3748' : '#dfe6e9'} />
+                                <Text style={[styles.emptyLabel, { color: theme.textSecondary }]}>Chưa có hoạt động mới nào.</Text>
+                            </View>
+                        }
+                    />
+                )}
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, RefreshControl } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { academicApi } from '../services/api';
@@ -10,6 +11,7 @@ import { useLanguage } from '../context/LanguageContext';
 export default function AttendanceScreen({ navigation }: any) {
     const { isDark, theme } = useTheme();
     const { t } = useLanguage();
+    const insets = useSafeAreaInsets();
     const [attendanceData, setAttendanceData] = useState<any[]>([]);
     const [stats, setStats] = useState<any>({ total: 0, present: 0, absent: 0, late: 0, excused: 0 });
     const [loading, setLoading] = useState(true);
@@ -155,7 +157,7 @@ export default function AttendanceScreen({ navigation }: any) {
 
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
             {/* Header */}
             <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -302,12 +304,12 @@ export default function AttendanceScreen({ navigation }: any) {
                     </View>
                 </View>
             )}
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FB' },
+    container: { flex: 1 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
         flexDirection: 'row',

@@ -45,6 +45,8 @@ import LeaveRequestScreen from '../screens/LeaveRequestScreen';
 import LibraryScreen from '../screens/LibraryScreen';
 import SurveyScreen from '../screens/SurveyScreen';
 import ComingSoonScreen from '../screens/ComingSoonScreen';
+import NewsDetailScreen from '../screens/NewsDetailScreen';
+import CommentScreen from '../screens/CommentScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -121,8 +123,8 @@ function MainNavigator() {
             <Stack.Screen name="LessonDetail" component={LessonDetailScreen} />
             <Stack.Screen name="GameList" component={GameListScreen} />
             <Stack.Screen name="MathRush" component={MathRushScreen} />
-            <Stack.Screen name="Timetable" component={TimetableScreen} />
-            <Stack.Screen name="Grades" component={GradesScreen} />
+            <Stack.Screen name="Timetable" component={TimetableScreen} options={{ animation: 'none' }} />
+            <Stack.Screen name="Grades" component={GradesScreen} options={{ animation: 'none' }} />
             <Stack.Screen name="Homework" component={HomeworkScreen} />
             <Stack.Screen name="Attendance" component={AttendanceScreen} />
             
@@ -142,6 +144,11 @@ function MainNavigator() {
             <Stack.Screen name="SchoolBus" component={SchoolBusScreen} />
             <Stack.Screen name="Library" component={LibraryScreen} />
             <Stack.Screen name="Survey" component={SurveyScreen} />
+            <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
+            <Stack.Screen name="Comment" component={CommentScreen} options={{ 
+                presentation: 'modal',
+                animation: 'slide_from_bottom'
+            }} />
             
             <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />

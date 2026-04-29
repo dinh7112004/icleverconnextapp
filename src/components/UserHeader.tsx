@@ -1,62 +1,42 @@
 import React, { useState, useEffect, memo, useMemo } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Image, DeviceEventEmitter } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuScreen from '../screens/MenuScreen';
 import { userApi, studentApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
+import { userCache } from '../services/userCache';
 
-// Hệ thống cấp độ dựa trên điểm
-// Hệ thống 20 cấp độ vinh danh iClever
-const LEVELS = [
-    { level: 1, name: 'Tân binh học đường', minPoints: 0 },
-    { level: 2, name: 'Mầm non học thuật', minPoints: 100 },
-    { level: 3, name: 'Học sinh chuyên cần', minPoints: 250 },
-    { level: 4, name: 'Người tìm tòi', minPoints: 450 },
-    { level: 5, name: 'Người khám phá', minPoints: 700 },
-    { level: 6, name: 'Người chinh phục', minPoints: 1000 },
-    { level: 7, name: 'Học sinh tích cực', minPoints: 1350 },
-    { level: 8, name: 'Học sinh vững vàng', minPoints: 1750 },
-    { level: 9, name: 'Học sinh ưu tú', minPoints: 2200 },
-    { level: 10, name: 'Học sinh xuất sắc', minPoints: 2700 },
-    { level: 11, name: 'Kỹ năng điêu luyện', minPoints: 3300 },
-    { level: 12, name: 'Tư duy nhạy bén', minPoints: 4000 },
-    { level: 13, name: 'Trí tuệ thông thái', minPoints: 4800 },
-    { level: 14, name: 'Học bá iClever', minPoints: 5700 },
-    { level: 15, name: 'Bậc thầy tri thức', minPoints: 6700 },
-    { level: 16, name: 'Cao thủ học đường', minPoints: 7800 },
-    { level: 17, name: 'Đại sư học thuật', minPoints: 9000 },
-    { level: 18, name: 'Thiên tài xuất chúng', minPoints: 10500 },
-    { level: 19, name: 'Vô song kỳ tài', minPoints: 12500 },
-    { level: 20, name: 'Huyền thoại iClever', minPoints: 15000 },
-];
+type UserHeaderProps = {
+    userData?: any;
+    studentInfo?: any;
+    isReady?: boolean;
+};
 
-function getLevelInfo(points: number) {
-    let current = LEVELS[0];
-    let next = LEVELS[1];
-    for (let i = LEVELS.length - 1; i >= 0; i--) {
-        if (points >= LEVELS[i].minPoints) {
-            current = LEVELS[i];
-            next = LEVELS[i + 1] || LEVELS[i];
-            break;
-        }
-    }
-    const pointsToNext = next.minPoints - points;
-    const range = next.minPoints - current.minPoints;
-    const progress = range > 0 ? ((points - current.minPoints) / range) : 1;
-    return { level: current.level, levelName: current.name, pointsToNext, progress };
+// LEVELS được quản lý bởi server — xem auth.service.ts
+// Fallback nếu API fail
+function getLevelInfoFallback(points: number) {
+    const minLevel = { level: 1, name: 'Tân binh học đường', minPoints: 0 };
+    return { level: 1, levelName: minLevel.name, pointsToNext: 100, progress: points / 100 };
 }
 
-import { userCache } from '../services/userCache';
+
+
 
 function UserHeader({ userData: propUserData, studentInfo: propStudentData, isReady }: UserHeaderProps) {
     const { isDark, theme } = useTheme();
+    const insets = useSafeAreaInsets();
     const [isMenuVisible, setMenuVisible] = useState(false);
     
-    // KHỞI TẠO ĐỒNG BỘ - Lấy từ Cache RAM ra dùng ngay lập tức
+    // KHAI BÁO STATE
     const [internalUser, setInternalUser] = useState<any>(propUserData || userCache.getUser());
     const [studentData, setStudentData] = useState<any>(propStudentData || userCache.getStudentProfile());
+    
+    // Gamification data fetch từ server
+    const [gamification, setGamification] = useState<any>(null);
+    const [hasUnread, setHasUnread] = useState(false);
     
     const userData = propUserData || internalUser;
     const [loadingProfile, setLoadingProfile] = useState(false);
@@ -85,16 +65,24 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
         // Tự động cập nhật lại ảnh/thông tin mỗi khi màn hình được hiển thị lại
         const unsubscribeFocus = navigation.addListener('focus', () => {
             fetchProfile();
+            checkUnreadStatus();
         });
 
         // Nghe tín hiệu thay đổi tức thì từ các màn hình khác
         const eventSub = DeviceEventEmitter.addListener('refresh_user_profile', () => {
             fetchProfile();
         });
+        
+        const notiSub = DeviceEventEmitter.addListener('refresh_unread_status', () => {
+            checkUnreadStatus();
+        });
+        
+        checkUnreadStatus();
 
         return () => {
             unsubscribeFocus();
             eventSub.remove();
+            notiSub.remove();
         };
     }, [propUserData?.id, propStudentData?.id, navigation]);
 
@@ -104,9 +92,10 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
             setLoadingProfile(true);
             
             // Luôn ưu tiên đọc từ bộ nhớ máy trước để lấy ảnh mới nhất vừa đổi
-            const [cachedUser, cachedStudent] = await Promise.all([
+            const [cachedUser, cachedStudent, cachedGami] = await Promise.all([
                 AsyncStorage.getItem('user'),
-                AsyncStorage.getItem('student_profile')
+                AsyncStorage.getItem('student_profile'),
+                AsyncStorage.getItem('gamification_cache'),
             ]);
 
             if (cachedUser) {
@@ -119,6 +108,10 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
                 const student = JSON.parse(cachedStudent);
                 setStudentData(student);
                 userCache.setStudentProfile(student);
+            }
+
+            if (cachedGami) {
+                setGamification(JSON.parse(cachedGami));
             }
 
             // Nếu chưa có dữ liệu gì mới gọi API
@@ -134,10 +127,48 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
                 userCache.setStudentProfile(sData);
             }
 
+            // Luôn fetch gamification từ server (nhẹ, nhanh)
+            try {
+                const gamiRes = await userApi.getGamification();
+                const gamiData = gamiRes.data?.data || gamiRes.data;
+                if (gamiData) {
+                    setGamification(gamiData);
+                    AsyncStorage.setItem('gamification_cache', JSON.stringify(gamiData));
+                }
+            } catch (e) {
+                // Bỏ qua nếu lỗi mạng, vẫn dùng cache
+            }
+
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
             setLoadingProfile(false);
+        }
+    };
+
+    const checkUnreadStatus = async () => {
+        try {
+            const READ_IDS_KEY = 'read_notification_ids';
+            const cachedNoti = await AsyncStorage.getItem('notifications_cache');
+            const storedReadIds = await AsyncStorage.getItem(READ_IDS_KEY);
+            const localReadIds: string[] = storedReadIds ? JSON.parse(storedReadIds) : [];
+            
+            if (cachedNoti) {
+                const notifications = JSON.parse(cachedNoti);
+                // Một thông báo là "chưa đọc" nếu: 
+                // 1. Nó có flag unread: true 
+                // 2. VÀ ID của nó chưa nằm trong danh sách localReadIds
+                const unreadCount = notifications.filter((n: any) => 
+                    n.unread && !localReadIds.includes(n.id)
+                ).length;
+                setHasUnread(unreadCount > 0);
+            } else {
+                // Nếu chưa có cache, mặc định hiện (hoặc gọi API check nhanh nếu cần)
+                // Ở đây ta tạm thời giữ trạng thái cũ hoặc ẩn nếu chưa biết
+                setHasUnread(false);
+            }
+        } catch (e) {
+            console.log('Error checking unread status:', e);
         }
     };
 
@@ -148,17 +179,25 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
     const avatarUrl = studentData?.avatarUrl || userData?.avatarUrl || null;
     const role = (userData?.role || '').toLowerCase();
 
-    // Thông tin lớp/trường từ dữ liệu học sinh (nếu có)
     const className = studentData?.currentClass?.name || studentData?.className || '';
     const schoolName = studentData?.school?.name || studentData?.schoolName || 'iClever Connect';
 
-    // Hệ thống điểm (Tích hợp API thật)
-    const points = userData?.points || 0;
-    const coins = userData?.coins || 0;
-    const { level, levelName, pointsToNext, progress } = getLevelInfo(points);
+    // Gamification: ưu tiên dữ liệu server, fallback sang local nếu chưa có
+    const points = gamification?.points ?? userData?.points ?? 0;
+    const coins = gamification?.coins ?? userData?.coins ?? 0;
+    const level = gamification?.level ?? 1;
+    const levelName = gamification?.levelName ?? 'Tân binh học đường';
+    const pointsToNext = gamification?.pointsToNext ?? 100;
+    const progress = gamification?.progress ?? 0;
 
     return (
-        <View style={[styles.headerBackground, { backgroundColor: isDark ? '#0f172a' : '#2b58de' }]}>
+        <View style={[
+            styles.headerBackground, 
+            { 
+                backgroundColor: isDark ? '#0f172a' : '#2b58de',
+                paddingTop: insets.top + 5
+            }
+        ]}>
             <MenuScreen 
                 isVisible={isMenuVisible} 
                 onClose={() => setMenuVisible(false)} 
@@ -180,13 +219,15 @@ function UserHeader({ userData: propUserData, studentInfo: propStudentData, isRe
                     hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                 >
                     <Ionicons name="notifications" size={26} color="white" />
-                    <View style={[styles.notificationBadge, { borderColor: isDark ? '#0f172a' : '#2b58de', top: 8, right: 8 }]} />
+                    {hasUnread && (
+                        <View style={[styles.notificationBadge, { borderColor: isDark ? '#0f172a' : '#2b58de', top: 8, right: 8 }]} />
+                    )}
                 </TouchableOpacity>
             </View>
 
             <View style={styles.userInfo}>
                 <View style={styles.avatarContainer}>
-                    <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)' }]}>
+                    <View style={[styles.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
                         {avatarUrl ? (
                             <Image 
                                 source={{ uri: avatarUrl }} 
@@ -274,7 +315,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between', 
         alignItems: 'center', 
         paddingHorizontal: 20, 
-        paddingTop: 10 
+        paddingTop: 5
     },
     appName: { color: 'white', fontSize: 22, fontWeight: 'bold' },
     notificationBtn: { position: 'relative' },

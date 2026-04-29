@@ -12,6 +12,8 @@ import {
     ScrollView,
     Dimensions
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,6 +32,9 @@ export default function LoginScreen({ navigation }: any) {
     const [showPassword, setShowPassword] = useState(false);
     const [biometricSupported, setBiometricSupported] = useState(false);
     const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isEmailError, setIsEmailError] = useState(false);
+    const [isPasswordError, setIsPasswordError] = useState(false);
 
     React.useEffect(() => {
         const initBiometrics = async () => {
@@ -62,9 +67,11 @@ export default function LoginScreen({ navigation }: any) {
 
     const performLogin = async (loginEmail: string, loginPass: string) => {
         if (!loginEmail || !loginPass) {
-            Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ email và mật khẩu');
+            setErrorMessage('Vui lòng nhập đầy đủ email và mật khẩu');
             return;
         }
+
+        setErrorMessage(null);
 
         setLoading(true);
         console.log(`[Login] Đang gửi yêu cầu đăng nhập...`);
@@ -91,7 +98,6 @@ export default function LoginScreen({ navigation }: any) {
                     });
                 }
                 
-                Alert.alert('Thành công', 'Đăng nhập thành công!');
                 authEvents.emitLogin();
             }
         } catch (error: any) {
@@ -100,104 +106,153 @@ export default function LoginScreen({ navigation }: any) {
                 console.log('[Login Error] Server Data:', error.response.data);
                 console.log('[Login Error] Server Status:', error.response.status);
             }
-            const message = error.response?.data?.message || 'Đã có lỗi xảy ra khi đăng nhập';
-            Alert.alert('Lỗi đăng nhập', message);
+            // Extract message from nested structure: error.response.data.error.message
+            const serverData = error.response?.data;
+            const message = serverData?.error?.message || serverData?.message || 'Đã có lỗi xảy ra khi đăng nhập';
+            
+            setErrorMessage(message);
+            
+            // Highlight specific fields based on message
+            if (message.includes('Tài khoản không tồn tại')) {
+                setIsEmailError(true);
+                setIsPasswordError(false);
+            } else if (message.includes('Mật khẩu không chính xác')) {
+                setIsEmailError(false);
+                setIsPasswordError(true);
+            } else {
+                setIsEmailError(true);
+                setIsPasswordError(true);
+            }
         } finally {
             setLoading(false);
         }
     };
 
+    const handleEmailChange = (text: string) => {
+        setEmail(text);
+        if (isEmailError) setIsEmailError(false);
+        if (errorMessage) setErrorMessage(null);
+    };
+
+    const handlePasswordChange = (text: string) => {
+        setPassword(text);
+        if (isPasswordError) setIsPasswordError(false);
+        if (errorMessage) setErrorMessage(null);
+    };
+
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[styles.container, { backgroundColor: theme.background }]}
-        >
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.header}>
-                    <LinearGradient
-                        colors={isDark ? ['#334155', '#1E293B', '#0F172A'] : ['#4c669f', '#3b5998', '#192f6a']}
-                        style={styles.logoContainer}
-                    >
-                        <Ionicons name="school" size={50} color="white" />
-                    </LinearGradient>
-                    <Text style={[styles.title, { color: theme.text }]}>iClever Connect</Text>
-                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Cổng thông tin giáo dục thông minh</Text>
-                </View>
-
-                <View style={styles.form}>
-                    <Text style={[styles.label, { color: theme.text }]}>Email</Text>
-                    <View style={[styles.inputContainer, { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: theme.border }]}>
-                        <Ionicons name="mail-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
-                        <TextInput
-                            style={[styles.input, { color: theme.text }]}
-                            placeholder="example@email.com"
-                            placeholderTextColor={theme.textSecondary}
-                            value={email}
-                            onChangeText={setEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
-                    <View style={[styles.inputContainer, { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: theme.border }]}>
-                        <Ionicons name="lock-closed-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
-                        <TextInput
-                            style={[styles.input, { color: theme.text }]}
-                            placeholder="********"
-                            placeholderTextColor={theme.textSecondary}
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!showPassword}
-                        />
-                        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                            <Ionicons
-                                name={showPassword ? "eye-off-outline" : "eye-outline"}
-                                size={20}
-                                color={theme.textSecondary}
-                            />
-                        </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity style={styles.forgotPassword}>
-                        <Text style={[styles.forgotPasswordText, { color: theme.primary }]}>Quên mật khẩu?</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={styles.buttonContainer}
-                        onPress={handleLogin}
-                        disabled={loading}
-                    >
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top', 'bottom']}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={[styles.container, { backgroundColor: theme.background }]}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+                <ScrollView 
+                    contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]} 
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                >
+                    <View style={styles.header}>
                         <LinearGradient
-                            colors={['#3b5998', '#192f6a']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.loginButton}
+                            colors={isDark ? ['#334155', '#1E293B', '#0F172A'] : ['#4c669f', '#3b5998', '#192f6a']}
+                            style={styles.logoContainer}
                         >
-                            {loading ? (
-                                <ActivityIndicator color="white" />
-                            ) : (
-                                <Text style={styles.buttonText}>ĐĂNG NHẬP</Text>
-                            )}
+                            <Ionicons name="school" size={50} color="white" />
                         </LinearGradient>
-                    </TouchableOpacity>
-
-                    {biometricSupported && hasSavedCredentials && (
-                        <TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>
-                            <Ionicons name="finger-print" size={32} color={theme.primary} />
-                            <Text style={[styles.biometricText, { color: theme.primary }]}>Đăng nhập bằng Sinh trắc học</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    <View style={[styles.footerInfo, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
-                        <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
-                        <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-                            Tài khoản do nhà trường cấp. Vui lòng liên hệ văn phòng nếu bạn chưa có tài khoản.
-                        </Text>
+                        <Text style={[styles.title, { color: theme.text }]}>iClever Connect</Text>
+                        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Cổng thông tin giáo dục thông minh</Text>
                     </View>
-                </View>
-            </ScrollView>
-        </KeyboardAvoidingView>
+
+                    <View style={styles.form}>
+                        <Text style={[styles.label, { color: theme.text }]}>Email</Text>
+                        <View style={[
+                            styles.inputContainer, 
+                            { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: isEmailError ? '#e74c3c' : theme.border }
+                        ]}>
+                            <Ionicons name="mail-outline" size={20} color={isEmailError ? '#e74c3c' : theme.textSecondary} style={styles.inputIcon} />
+                            <TextInput
+                                style={[styles.input, { color: theme.text }]}
+                                placeholder="example@email.com"
+                                placeholderTextColor={theme.textSecondary}
+                                value={email}
+                                onChangeText={handleEmailChange}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
+                        </View>
+
+                        <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
+                        <View style={[
+                            styles.inputContainer, 
+                            { backgroundColor: isDark ? '#2D3748' : 'white', borderColor: isPasswordError ? '#e74c3c' : theme.border }
+                        ]}>
+                            <Ionicons name="lock-closed-outline" size={20} color={isPasswordError ? '#e74c3c' : theme.textSecondary} style={styles.inputIcon} />
+                            <TextInput
+                                style={[styles.input, { color: theme.text }]}
+                                placeholder="********"
+                                placeholderTextColor={theme.textSecondary}
+                                value={password}
+                                onChangeText={handlePasswordChange}
+                                secureTextEntry={!showPassword}
+                            />
+                            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                                <Ionicons
+                                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                                    size={20}
+                                    color={theme.textSecondary}
+                                />
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity style={styles.forgotPassword}>
+                            <Text style={[styles.forgotPasswordText, { color: theme.primary }]}>Quên mật khẩu?</Text>
+                        </TouchableOpacity>
+
+                        {errorMessage && (
+                            <View style={styles.minimalErrorContainer}>
+                                <Ionicons name="alert-circle" size={16} color="#ff7675" />
+                                <Text style={styles.minimalErrorText}>{errorMessage}</Text>
+                            </View>
+                        )}
+
+                        <TouchableOpacity
+                            style={styles.buttonContainer}
+                            onPress={handleLogin}
+                            disabled={loading}
+                        >
+                            <LinearGradient
+                                colors={['#3b5998', '#192f6a']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.loginButton}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <Text style={styles.buttonText}>ĐĂNG NHẬP</Text>
+                                )}
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        {biometricSupported && hasSavedCredentials && (
+                            <TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin}>
+                                <Ionicons name="finger-print" size={32} color={theme.primary} />
+                                <Text style={[styles.biometricText, { color: theme.primary }]}>Đăng nhập bằng Sinh trắc học</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        <View style={[styles.footerInfo, { backgroundColor: isDark ? '#2D3748' : '#f1f2f6' }]}>
+                            <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
+                            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+                                Tài khoản do nhà trường cấp. Vui lòng liên hệ văn phòng nếu bạn chưa có tài khoản.
+                            </Text>
+                        </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
@@ -278,5 +333,17 @@ const styles = StyleSheet.create({
         marginLeft: 10,
         fontSize: 15,
         fontWeight: '600'
+    },
+    minimalErrorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+        paddingHorizontal: 5,
+    },
+    minimalErrorText: {
+        color: '#ff7675',
+        fontSize: 13,
+        marginLeft: 6,
+        fontWeight: '500',
     }
 });

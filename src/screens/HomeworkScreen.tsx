@@ -396,7 +396,8 @@ export default function HomeworkScreen({ navigation }: any) {
             <Modal visible={submitModalVisible} transparent animationType="slide">
                 <KeyboardAvoidingView 
                     style={{ flex: 1 }} 
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
                 >
                     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                         <View style={styles.modalOverlay}>

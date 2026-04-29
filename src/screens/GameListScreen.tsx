@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, SafeAreaView, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, SafeAreaView, Alert } from 'react-native';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { userApi } from '../services/api';
@@ -21,6 +21,21 @@ export default function GameListScreen({ navigation }: any) {
         } finally {
             setLoading(false);
         }
+    };
+
+    const MATH_RUSH_COST = 5; // xu / lượt
+
+    const handlePlayMathRush = () => {
+        const coins = userData?.coins ?? 0;
+        if (coins < MATH_RUSH_COST) {
+            Alert.alert(
+                'Không đủ xu ⭐',
+                `Bạn cần ít nhất ${MATH_RUSH_COST} xu để chơi. Bạn đang có ${coins} xu.\n\nHãy hoàn thành bài học để kiếm xu!`,
+                [{ text: 'OK', style: 'default' }]
+            );
+            return;
+        }
+        navigation.navigate('MathRush');
     };
 
     return (
@@ -58,7 +73,8 @@ export default function GameListScreen({ navigation }: any) {
                         {/* Vua Toán Học */}
                         <TouchableOpacity
                             style={styles.gameCard}
-                            onPress={() => navigation.navigate('MathRush')}
+                            onPress={handlePlayMathRush}
+                            activeOpacity={0.85}
                         >
                             <Image
                                 source={{ uri: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=400&auto=format&fit=crop' }}
@@ -73,8 +89,11 @@ export default function GameListScreen({ navigation }: any) {
                                 </View>
                             </View>
                             <TouchableOpacity
-                                style={styles.playBtn}
-                                onPress={() => navigation.navigate('MathRush')}
+                                style={[
+                                    styles.playBtn,
+                                    (userData?.coins ?? 0) < 5 && { backgroundColor: '#95a5a6' }
+                                ]}
+                                onPress={handlePlayMathRush}
                             >
                                 <Ionicons name="play" size={18} color="white" />
                                 <Text style={styles.playBtnText}>Chơi</Text>

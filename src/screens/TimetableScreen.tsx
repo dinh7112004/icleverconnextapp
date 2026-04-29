@@ -128,7 +128,9 @@ export default function TimetableScreen({ navigation }: any) {
         if (!currentDayData) return null;
 
         const morningLessons = currentDayData.lessons.slice(0, 5);
-        const afternoonLessons = currentDayData.lessons.slice(5, 10).filter((l: any) => l !== null);
+        // Giữ nguyên 5 slot chiều (kể cả null) để hiện đúng số tiết 6-10
+        const afternoonLessons = currentDayData.lessons.slice(5, 10);
+        const hasAfternoon = afternoonLessons.some((l: any) => l !== null);
 
         return (
             <ScrollView style={styles.dailyScroll} showsVerticalScrollIndicator={false}>
@@ -177,42 +179,44 @@ export default function TimetableScreen({ navigation }: any) {
                     );
                 })}
 
-                {afternoonLessons.length > 0 && (
+                {hasAfternoon && (
                     <>
                         <View style={styles.afternoonDivider}>
                             <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
                             <Text style={[styles.afternoonTitle, { color: theme.textSecondary }]}>BUỔI CHIỀU</Text>
                             <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
                         </View>
-                        {afternoonLessons.map((lesson: any) => {
-                            const periodNum = lesson.period;
-                            const color = SUBJECT_COLORS[lesson.subjectName || lesson.subject?.name] || theme.primary;
+                        {afternoonLessons.map((lesson: any, index: number) => {
+                            const periodNum = index + 6; // tiết 6,7,8,9,10
+                            const actualLesson = lesson;
+                            const color = actualLesson
+                                ? (SUBJECT_COLORS[actualLesson.subjectName || actualLesson.subject?.name] || theme.primary)
+                                : theme.border;
                             return (
                                 <View key={`afternoon-${periodNum}`} style={styles.lessonItem}>
                                     <View style={styles.timelineContainer}>
                                         <View style={[styles.timelineCircle, { borderColor: color, backgroundColor: theme.surface }]}>
                                             <Text style={[styles.timelineIndex, { color: color }]}>{periodNum}</Text>
                                         </View>
-                                        {/* Don't show connecting line for the very last lesson of the day to make it look cleaner */}
                                         <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
                                     </View>
                                     <View style={[styles.lessonCard, { backgroundColor: theme.surface, borderColor: isDark ? '#334155' : '#f1f5f9' }]}>
                                         <View style={styles.lessonMain}>
                                             <View style={{ flex: 1 }}>
-                                                <Text style={[styles.subjectName, { color: theme.text }]}>
-                                                    {lesson?.subjectName || lesson?.subject?.name}
+                                                <Text style={[styles.subjectName, { color: actualLesson ? theme.text : theme.textSecondary, fontStyle: actualLesson ? 'normal' : 'italic' }]}>
+                                                    {actualLesson?.subjectName || actualLesson?.subject?.name || 'Trống'}
                                                 </Text>
                                                 <View style={styles.teacherRow}>
                                                     <Ionicons name="person-outline" size={14} color={theme.textSecondary} />
                                                     <Text style={[styles.teacherName, { color: theme.textSecondary }]}>
-                                                        GV: {lesson?.teacherName || lesson?.teacher?.fullName || '---'}
+                                                        GV: {actualLesson?.teacherName || actualLesson?.teacher?.fullName || '---'}
                                                     </Text>
                                                 </View>
                                             </View>
                                             <View style={[styles.timeBadge, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border }]}>
                                                 <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
                                                 <Text style={[styles.timeText, { color: theme.textSecondary }]}>
-                                                    {lesson?.startTime || '--:--'} - {lesson?.endTime || '--:--'}
+                                                    {actualLesson?.startTime || '--:--'} - {actualLesson?.endTime || '--:--'}
                                                 </Text>
                                             </View>
                                         </View>
@@ -267,7 +271,7 @@ export default function TimetableScreen({ navigation }: any) {
                             {[6, 7, 8, 9, 10].map((period: number) => (
                                 <View key={period} style={[styles.gridRow, { borderBottomColor: theme.border }]}>
                                     <View style={[styles.gridCell, { width: 60, borderRightColor: theme.border }]}>
-                                        <Text style={[styles.periodIndex, { color: theme.textSecondary }]}></Text>
+                                        <Text style={[styles.periodIndex, { color: theme.textSecondary }]}>{period}</Text>
                                     </View>
                                     {DAYS.map(day => {
                                         const lesson = timetable.find(d => d.dayOfWeek === day)?.lessons[period - 1];

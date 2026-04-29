@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     StyleSheet, Text, View, TextInput, ScrollView,
-    TouchableOpacity, SafeAreaView, ActivityIndicator,
+    TouchableOpacity, ActivityIndicator,
     Image, FlatList, Dimensions, Modal, Alert, StatusBar, RefreshControl
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { libraryApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
@@ -54,6 +55,7 @@ const BookItem = React.memo(({ item, theme, isDark, onSelect }: any) => (
 
 export default function LibraryScreen({ navigation }: any) {
     const { isDark, theme } = useTheme();
+    const insets = useSafeAreaInsets();
     const [books, setBooks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -141,7 +143,7 @@ export default function LibraryScreen({ navigation }: any) {
     ), [theme, isDark, handleSelectBook]);
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
             <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
             
             <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
@@ -225,7 +227,7 @@ export default function LibraryScreen({ navigation }: any) {
                     }
                 />
             )}
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -235,10 +237,10 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 60 },
     headerIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
     headerTitle: { fontSize: 20, fontWeight: '800' },
-    searchSection: { padding: 16 },
-    searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 16, height: 50 },
+    searchSection: { paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8 },
+    searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 16, height: 46 },
     searchInput: { flex: 1, marginLeft: 12, fontSize: 15 },
-    catSection: { paddingBottom: 16 },
+    catSection: { paddingBottom: 12 },
     catScroll: { paddingHorizontal: 16 },
     catChip: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, marginRight: 10, borderWidth: 1 },
     catText: { fontSize: 14, fontWeight: '600' },

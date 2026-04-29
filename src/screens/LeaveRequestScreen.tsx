@@ -250,7 +250,8 @@ export default function LeaveRequestScreen({ navigation }: any) {
             {screen === 'form' ? (
                 <KeyboardAvoidingView 
                     style={styles.formOverlay}
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    behavior={Platform.OS === 'ios' ? 'position' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
                 >
                     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                         <ScrollView 

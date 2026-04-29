@@ -240,9 +240,9 @@ export default function HomeScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
             <UserHeader userData={userData} studentInfo={studentInfo} isReady={hasLoadedCache} />
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
                 <View style={[styles.menuGrid, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                     {filteredMenuItems.map((item) => (
                         <TouchableOpacity 
@@ -335,7 +335,7 @@ export default function HomeScreen({ navigation }: any) {
                     <View style={{ height: 30 }} />
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

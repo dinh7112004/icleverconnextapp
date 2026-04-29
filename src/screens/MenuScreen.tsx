@@ -20,7 +20,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
     const { isDark, theme } = useTheme();
     const { t } = useLanguage();
     const navigation = useNavigation<any>();
-    
+
     // Khởi tạo ĐỒNG BỘ từ bộ nhớ RAM (0ms delay)
     const cachedUser = userCache.getUser();
     const [userRole, setUserRole] = React.useState<string>(cachedUser?.role || 'STUDENT');
@@ -47,7 +47,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
             const { userApi } = require('../services/api');
             const response = await userApi.getProfile();
             const userData = response.data.data || response.data;
-            
+
             if (userData) {
                 setUserName(userData.fullName);
                 setUserRole(userData.role);
@@ -74,8 +74,8 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
     };
 
     const renderMenuItem = (icon: any, title: string, hasChevron = true, onPress?: () => void) => (
-        <TouchableOpacity 
-            style={[styles.menuItem, { borderBottomColor: theme.border }]} 
+        <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.border }]}
             onPress={onPress}
         >
             <View style={styles.menuItemLeft}>
@@ -98,8 +98,8 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
                 {/* --- TOP HEADER --- */}
                 <View style={[styles.blueHeader, { backgroundColor: isDark ? '#1E293B' : '#3b5998' }]}>
-                    <TouchableOpacity 
-                        style={styles.closeBtn} 
+                    <TouchableOpacity
+                        style={styles.closeBtn}
                         onPress={onClose}
                         hitSlop={{ top: 30, bottom: 30, left: 30, right: 30 }}
                     >
@@ -110,9 +110,9 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                         <View style={styles.avatarContainer}>
                             <View style={styles.avatarPlaceholder}>
                                 {currentAvatar ? (
-                                    <Image 
-                                        source={{ uri: currentAvatar }} 
-                                        style={{ width: 70, height: 70, borderRadius: 35 }} 
+                                    <Image
+                                        source={{ uri: currentAvatar }}
+                                        style={{ width: 70, height: 70, borderRadius: 35 }}
                                         fadeDuration={0}
                                     />
                                 ) : (
@@ -127,8 +127,8 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                             <Text style={styles.userName}>{userName || t('common.user')}</Text>
                             <View style={styles.roleBadge}>
                                 <Text style={styles.roleBadgeText}>
-                                    {userRole === 'STUDENT' ? t('common.student') : 
-                                     userRole === 'PARENT' ? t('common.parent') : userRole}
+                                    {userRole === 'STUDENT' ? t('common.student') :
+                                        userRole === 'PARENT' ? t('common.parent') : userRole}
                                 </Text>
                             </View>
                         </View>
@@ -140,8 +140,8 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                     <View style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('menu.account')}</Text>
                         {renderMenuItem(
-                            <Feather name="user" size={20} color="#3b5998" />, 
-                            t('menu.profile'), 
+                            <Feather name="user" size={20} color="#3b5998" />,
+                            t('menu.profile'),
                             true,
                             () => {
                                 navigation.navigate('StudentProfile');
@@ -149,7 +149,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                             }
                         )}
                         {renderMenuItem(
-                            <Feather name="lock" size={20} color="#3b5998" />, 
+                            <Feather name="lock" size={20} color="#3b5998" />,
                             t('menu.password'),
                             true,
                             () => {
@@ -158,7 +158,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                             }
                         )}
                         {renderMenuItem(
-                            <Feather name="bell" size={20} color="#3b5998" />, 
+                            <Feather name="bell" size={20} color="#3b5998" />,
                             t('menu.notifications'),
                             true,
                             () => {
@@ -172,7 +172,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                     <View style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('menu.app')}</Text>
                         {renderMenuItem(
-                            <Feather name="shield" size={20} color="#3b5998" />, 
+                            <Feather name="shield" size={20} color="#3b5998" />,
                             t('menu.policy'),
                             true,
                             () => {
@@ -181,7 +181,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                             }
                         )}
                         {renderMenuItem(
-                            <Feather name="help-circle" size={20} color="#3b5998" />, 
+                            <Feather name="help-circle" size={20} color="#3b5998" />,
                             t('menu.support'),
                             true,
                             () => {
@@ -190,7 +190,7 @@ export default function MenuScreen({ isVisible, onClose, avatarUrl }: MenuScreen
                             }
                         )}
                         {renderMenuItem(
-                            <Feather name="settings" size={20} color="#3b5998" />, 
+                            <Feather name="settings" size={20} color="#3b5998" />,
                             t('menu.settings'),
                             true,
                             () => {

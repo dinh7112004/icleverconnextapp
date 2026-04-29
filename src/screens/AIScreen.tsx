@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   Keyboard,
   Image,
-  Alert
+  Alert,
+  ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,8 +20,11 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import EventSource from 'react-native-sse';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { aiApi } from '../services/api';
+import { aiApi, studentApi, academicApi } from '../services/api';
 import apiClient from '../services/api';
+import { userCache } from '../services/userCache';
+
+const BOT_AVATAR = require('../../assets/ai/bot_avatar.jpg');
 
 interface Message {
   id: string;
@@ -37,15 +41,164 @@ export default function AIScreen() {
     const [selectedImage, setSelectedImage] = useState<{ uri: string, base64: string | undefined } | null>(null);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [isTyping, setIsTyping] = useState(false);
+    const [systemPrompt, setSystemPrompt] = useState<string>('');
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [smartSuggestions, setSmartSuggestions] = useState<string[]>([
+        'Hôm nay có lịch học gì không?',
+        'Hướng dẫn giải bài tập Toán',
+    ]);
     const flatListRef = useRef<FlatList>(null);
     const sseRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
+        const showSub = Keyboard.addListener('keyboardDidShow', () => {
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        });
+        
         loadHistory();
+        loadStudentContext();
         return () => {
             if (sseRef.current) sseRef.current.close();
+            showSub.remove();
         };
     }, []);
+
+    // ─── Build context từ data thật của học sinh ────────────────────
+    const loadStudentContext = async () => {
+        try {
+            const cachedUser = userCache.getUser();
+            if (!cachedUser) return;
+
+            const studentId = cachedUser._id || cachedUser.id || '';
+            const classId = cachedUser.classId || cachedUser.class?._id || '';
+            const fullName = cachedUser.fullName || 'học sinh';
+            const className = cachedUser.className || cachedUser.class?.name || '';
+
+            // Lấy điểm số và thời khoá biểu song song
+            const [gradesRes, timetableRes] = await Promise.allSettled([
+                studentId ? academicApi.getGrades(studentId) : Promise.reject('no id'),
+                classId ? academicApi.getTimetable(classId) : Promise.reject('no classId'),
+            ]);
+
+            // Xử lý điểm số
+            let gradesText = '';
+            let weakSubjects: string[] = [];
+            if (gradesRes.status === 'fulfilled') {
+                const grades = gradesRes.value.data?.data || gradesRes.value.data || [];
+                if (Array.isArray(grades) && grades.length > 0) {
+                    gradesText = grades
+                        .slice(0, 8)
+                        .map((g: any) => `  - ${g.subjectName || g.subject}: ${g.averageScore ?? g.score ?? 'chưa có'}`)
+                        .join('\n');
+                    weakSubjects = grades
+                        .filter((g: any) => (g.averageScore ?? g.score ?? 10) < 7)
+                        .map((g: any) => g.subjectName || g.subject);
+                }
+            }
+
+            // Xử lý thời khoá biểu hôm nay
+            let todayScheduleText = '';
+            let todaySubjects: string[] = [];
+            if (timetableRes.status === 'fulfilled') {
+                const timetableData = timetableRes.value.data?.data || timetableRes.value.data || [];
+                const today = new Date();
+                const dayOfWeek = today.getDay(); // 0=CN, 1=T2...
+                const dayNames: Record<number, string> = {
+                    0: 'Chủ Nhật', 1: 'Thứ 2', 2: 'Thứ 3',
+                    3: 'Thứ 4', 4: 'Thứ 5', 5: 'Thứ 6', 6: 'Thứ 7'
+                };
+                const todayName = dayNames[dayOfWeek];
+
+                const todaySlots = Array.isArray(timetableData)
+                    ? timetableData.filter((slot: any) =>
+                        slot.dayOfWeek === todayName ||
+                        slot.day === todayName ||
+                        slot.dayOfWeek === dayOfWeek
+                    )
+                    : [];
+
+                if (todaySlots.length > 0) {
+                    todayScheduleText = todaySlots
+                        .map((s: any) => `  - Tiết ${s.period || s.slot || ''}: ${s.subjectName || s.subject} (GV: ${s.teacherName || s.teacher || 'N/A'})`)
+                        .join('\n');
+                    todaySubjects = todaySlots.map((s: any) => s.subjectName || s.subject);
+                } else {
+                    todayScheduleText = '  Hôm nay không có lịch học.';
+                }
+            }
+
+            // Build system prompt
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            const prompt = `NHIỆM VỤ QUAN TRỌNG: Tuyệt đối KHÔNG sử dụng bất kỳ biểu tượng cảm xúc (emoji), icon, hoặc ký tự hình ảnh nào (ví dụ: 🚀, ✨, 📚...) trong câu trả lời. Chỉ sử dụng văn bản thuần túy. Đây là yêu cầu bắt buộc để đảm bảo tính chuyên nghiệp.
+
+Bạn là trợ lý AI thông minh tích hợp trong ứng dụng "iClever Connect", chuyên hỗ trợ học sinh và phụ huynh.
+Bạn có kiến thức sâu rộng về toàn bộ tính năng của ứng dụng này.
+
+Cấu trúc và tính năng của ứng dụng iClever:
+1. Học tập:
+   - Thời khóa biểu (Timetable): Xem lịch học theo ngày và theo tuần.
+   - Kết quả học tập (Grades): Theo dõi điểm số chi tiết, điểm trung bình và xếp loại học lực.
+   - Bài tập (Homework): Xem danh sách bài tập về nhà và nộp bài trực tiếp.
+   - Bài học (Curriculum): Kho học liệu, bài giảng và bài tập trắc nghiệm (Quiz) theo môn học.
+2. Tiện ích hàng ngày:
+   - Điểm danh (Attendance): Theo dõi trạng thái đi học, đến muộn hoặc vắng mặt.
+   - Thực đơn (Canteen Menu): Xem thực đơn bán trú hàng ngày/hàng tuần.
+   - Xe đưa đón (School Bus): Thông tin tuyến xe và định vị xe bus.
+   - Học phí (Tuition): Theo dõi tình trạng học phí và các khoản phí cần nộp.
+3. Liên lạc & Sức khỏe:
+   - Xin nghỉ phép (Leave Request): Gửi đơn xin nghỉ phép đến giáo viên.
+   - Dặn thuốc & Sức khỏe (Medicine/Health): Gửi ghi chú sức khỏe và hướng dẫn dặn thuốc cho giáo viên.
+   - Trò chuyện (Chat): Nhắn tin trực tiếp với giáo viên và nhà trường.
+   - Danh bạ (Contact): Thông tin liên hệ của giáo viên chủ nhiệm và giáo viên bộ môn.
+4. Hoạt động khác:
+   - Tin tức (News): Cập nhật thông báo và các bài viết từ nhà trường.
+   - Thư viện (Library): Mượn sách và xem tài liệu tham khảo.
+   - Mini Game: Khu vực giải trí có các trò chơi như Math Rush (giải toán nhanh) để tích điểm.
+   - Khảo sát (Survey): Tham gia đóng góp ý kiến cho nhà trường.
+5. Hệ thống tích điểm (Gamification):
+   - Người dùng tích lũy Điểm (Points) và Xu (Coins) thông qua học tập và chơi game để tăng Cấp độ (Level) và đổi thưởng.
+
+Thông tin của học sinh hiện tại:
+- Tên: ${fullName}
+- Lớp: ${className || 'chưa xác định'}
+- Ngày hôm nay: ${dateStr}
+
+Dữ liệu học tập thực tế:
+Lịch học hôm nay:
+${todayScheduleText || '  Không có dữ liệu lịch học.'}
+
+Điểm số gần nhất:
+${gradesText || '  Chưa có dữ liệu điểm số.'}
+
+Quy tắc trả lời:
+- Luôn gọi học sinh bằng tên thân mật "${fullName.split(' ').pop()}".
+- Nếu người dùng hỏi về cách dùng app, hãy hướng dẫn họ tìm đến mục tương ứng trong menu.
+- Nếu được hỏi về lịch học hay điểm số, hãy dựa chính xác vào dữ liệu thực tế ở trên.
+- Trả lời bằng tiếng Việt, ngôn ngữ thân thiện, chuyên nghiệp.
+- NHẮC LẠI: Tuyệt đối KHÔNG dùng emoji, icon hay bất kỳ ký hiệu hình ảnh nào trong văn bản. Chỉ dùng chữ và số.
+- Nếu có thắc mắc ngoài khả năng, hãy khuyên người dùng liên hệ trực tiếp với nhà trường.`;
+
+            setSystemPrompt(prompt);
+
+            // Build smart suggestions dựa trên data thật
+            const suggestions: string[] = [];
+            if (todaySubjects.length > 0) {
+                suggestions.push(`Hôm nay ${fullName.split(' ').pop()} có ${todaySubjects.join(', ')} - giúp ôn bài nhé!`);
+                suggestions.push(`Giải thích kiến thức môn ${todaySubjects[0]} cho em`);
+            }
+            if (weakSubjects.length > 0) {
+                suggestions.push(`Giúp em cải thiện môn ${weakSubjects[0]}`);
+            }
+            suggestions.push('Lịch học hôm nay của em thế nào?');
+            suggestions.push('Cho em vài tips học bài hiệu quả');
+
+            setSmartSuggestions(suggestions.slice(0, 4));
+        } catch (error) {
+            console.log('[AI] Không load được context:', error);
+        }
+    };
 
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -118,9 +271,10 @@ export default function AIScreen() {
                 },
                 method: 'POST',
                 body: JSON.stringify({ 
-                    prompt: userMsg.text,
+                    prompt: `${userMsg.text} (IMPORTANT: Do not use any emojis or icons in your response. Answer in plain text only.)`,
                     image: currentImageBase64,
-                    mimeType: 'image/jpeg'
+                    mimeType: 'image/jpeg',
+                    systemPrompt: systemPrompt || undefined, // 🔑 inject context học sinh
                 }),
                 pollingInterval: 0,
             });
@@ -204,8 +358,8 @@ export default function AIScreen() {
             {/* --- AI HEADER --- */}
             <View style={[styles.aiHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
                 <View style={styles.headerLeft}>
-                    <View style={[styles.robotIconBox, { backgroundColor: theme.primary }]}>
-                        <MaterialCommunityIcons name="robot-happy" size={24} color="white" />
+                    <View style={[styles.robotIconBox, { backgroundColor: 'transparent' }]}>
+                        <Image source={BOT_AVATAR} style={styles.robotAvatar} />
                     </View>
                     <View style={{ marginLeft: 12 }}>
                         <Text style={[styles.aiTitle, { color: theme.text }]}>Trợ lý iClever AI</Text>
@@ -218,9 +372,9 @@ export default function AIScreen() {
             </View>
 
             <KeyboardAvoidingView 
-                style={{ flex: 1 }}
+                style={{ flex: 1, backgroundColor: theme.background }}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                keyboardVerticalOffset={0}
             >
                 <View style={{ flex: 1 }}>
                     {isLoadingHistory ? (
@@ -238,19 +392,32 @@ export default function AIScreen() {
                             onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
                             ListEmptyComponent={
                                 <View style={styles.emptyContainer}>
-                                    <MaterialCommunityIcons name="robot-outline" size={60} color={theme.textSecondary} style={{ opacity: 0.5, marginBottom: 16 }} />
+                                    <View style={[styles.emptyRobotWrapper, { shadowColor: theme.primary }]}>
+                                        <Image source={BOT_AVATAR} style={styles.emptyRobotAvatar} />
+                                    </View>
+                                    <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                                        Xin chào! Tôi là Trợ lý iClever AI
+                                    </Text>
                                     <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                                        Chào bạn! Tôi là trợ lý ảo iClever AI. Tôi có thể giúp gì cho bạn hôm nay?
+                                        Tôi biết lịch học, điểm số của bạn và có thể giúp giải bài tập, tư vấn học tập!
                                     </Text>
                                     
                                     <View style={styles.suggestedActions}>
-                                        <Text style={[styles.suggestedTitle, { color: theme.textSecondary }]}>Gợi ý:</Text>
-                                        <TouchableOpacity onPress={() => handleSend("Hôm nay có lịch học gì không?")} style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
-                                            <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Hôm nay có lịch học gì không?</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleSend("Hướng dẫn giải bài tập Toán")} style={[styles.suggestedBtn, { backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)', borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.1)' }]}>
-                                            <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>Hướng dẫn giải bài tập Toán</Text>
-                                        </TouchableOpacity>
+                                        <Text style={[styles.suggestedTitle, { color: theme.textSecondary }]}>💡 Gợi ý cho bạn:</Text>
+                                        <ScrollView showsVerticalScrollIndicator={false}>
+                                            {smartSuggestions.map((suggestion, index) => (
+                                                <TouchableOpacity
+                                                    key={index}
+                                                    onPress={() => handleSend(suggestion)}
+                                                    style={[styles.suggestedBtn, {
+                                                        backgroundColor: isDark ? '#2D3748' : 'rgba(59, 89, 152, 0.05)',
+                                                        borderColor: isDark ? '#334155' : 'rgba(59, 89, 152, 0.15)'
+                                                    }]}
+                                                >
+                                                    <Text style={[styles.suggestedBtnText, { color: theme.primary }]}>{suggestion}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
                                     </View>
                                 </View>
                             }
@@ -259,7 +426,7 @@ export default function AIScreen() {
                 </View>
 
                 {/* --- INPUT AREA --- */}
-                <View style={{ backgroundColor: theme.surface, paddingBottom: insets.bottom || 10 }}>
+                <View style={{ backgroundColor: theme.surface, paddingBottom: insets.bottom > 0 ? insets.bottom - 5 : 10 }}>
                     {selectedImage && (
                         <View style={[styles.imagePreviewContainer, { borderTopColor: theme.border }]}>
                             <View style={styles.imageWrapper}>
@@ -313,11 +480,19 @@ const styles = StyleSheet.create({
     },
     headerLeft: { flexDirection: 'row', alignItems: 'center' },
     robotIconBox: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         justifyContent: 'center',
-        alignItems: 'center'
+        alignItems: 'center',
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.1)'
+    },
+    robotAvatar: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover'
     },
     aiTitle: { fontSize: 17, fontWeight: 'bold' },
     statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
@@ -326,7 +501,7 @@ const styles = StyleSheet.create({
     
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     chatContainer: { padding: 15 },
-    messageRow: { marginBottom: 16, alignItems: 'flex-start' },
+    messageRow: { marginBottom: 12, alignItems: 'flex-start' },
     messageRowUser: { alignItems: 'flex-end' },
     
     aiMessageBubble: {
@@ -357,10 +532,31 @@ const styles = StyleSheet.create({
         resizeMode: 'cover',
     },
     
-    emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
-    emptyText: { fontSize: 15, textAlign: 'center', marginHorizontal: 30, marginBottom: 30 },
-    suggestedActions: { width: '100%', marginTop: 20 },
-    suggestedTitle: { fontSize: 13, marginBottom: 12, fontWeight: '500', textAlign: 'center' },
+    emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 30, paddingHorizontal: 20 },
+    emptyRobotWrapper: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: 'white',
+        marginBottom: 16,
+        padding: 4,
+        elevation: 8,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    emptyRobotAvatar: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 50,
+        resizeMode: 'contain'
+    },
+    emptyTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
+    emptyText: { fontSize: 14, textAlign: 'center', marginHorizontal: 10, marginBottom: 20, lineHeight: 20 },
+    suggestedActions: { width: '100%', marginTop: 8 },
+    suggestedTitle: { fontSize: 13, marginBottom: 12, fontWeight: '600', textAlign: 'center' },
     suggestedBtn: { 
         paddingVertical: 12, 
         paddingHorizontal: 20, 
@@ -395,7 +591,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-end',
         paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingVertical: 8,
     },
     inputBox: { 
         flex: 1, 

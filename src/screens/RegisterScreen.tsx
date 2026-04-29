@@ -73,10 +73,15 @@ export default function RegisterScreen({ navigation }: any) {
 
     return (
         <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'position' : 'height'}
             style={[styles.container, { backgroundColor: theme.background }]}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
         >
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]} 
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+            >
                 <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
                     <Ionicons name="arrow-back" size={24} color={theme.text} />
                 </TouchableOpacity>

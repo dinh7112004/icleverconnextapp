@@ -10,8 +10,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userCache } from './userCache';
 
 // ─── Configuration ──────────────────────────────────────────────
-// const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local (chỉ dùng khi dev)
-const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (production)
+const BASE_URL = 'http://192.168.1.180:3000/api/v1'; // IP local mới nhất
+// const BASE_URL = 'https://iclerverconnextbackend.onrender.com/api/v1'; // Render (Dùng khi build)
 
 
 // ─── Axios Instance ─────────────────────────────────────────────
@@ -98,6 +98,9 @@ export const authApi = {
 export const userApi = {
     getProfile: () =>
         apiClient.get('/auth/me'),
+
+    getGamification: () =>
+        apiClient.get('/auth/me/gamification'),
 
     updateRole: (role: 'student' | 'parent') =>
         apiClient.patch('/users/me/role', { role }),
@@ -199,6 +202,9 @@ export const newsApi = {
         const queryParams = { type: 'news', ...params };
         return apiClient.get('/notifications', { params: queryParams });
     },
+
+    getOne: (id: string) =>
+        apiClient.get(`/notifications/${id}`),
 
     like: (id: string) =>
         apiClient.post(`/notifications/${id}/like`),
@@ -340,6 +346,10 @@ export const gameApi = {
     // Lấy câu hỏi toán học theo khối lớp
     getQuestions: (gradeLevel: number) =>
         apiClient.get('/games/math-rush/questions', { params: { gradeLevel } }),
+
+    // Trừ xu khi bắt đầu chơi
+    startGame: (gameType: string, cost: number) =>
+        apiClient.post('/games/start', { gameType, cost }),
 
     // Submit điểm số và nhận thưởng (coins, points)
     finishGame: (score: number, gameType: string) =>

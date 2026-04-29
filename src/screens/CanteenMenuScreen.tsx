@@ -60,17 +60,17 @@ export default function CanteenMenuScreen({ navigation }: any) {
         setSelectedDate(newDate);
     };
 
-    const isFuture = () => {
-        const futureLimit = new Date();
-        // Limit to current day only, no future dates
+    // Cho phép xem tối đa 14 ngày tới
+    const isAtMaxFuture = () => {
+        const maxDate = new Date();
+        maxDate.setDate(maxDate.getDate() + 14);
         const current = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-        const limitDate = new Date(futureLimit.getFullYear(), futureLimit.getMonth(), futureLimit.getDate());
-        return current.getTime() >= limitDate.getTime();
+        const limit = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+        return current.getTime() >= limit.getTime();
     };
 
     const goToNext = () => {
-        if (isFuture()) return;
-
+        if (isAtMaxFuture()) return;
         const newDate = new Date(selectedDate);
         newDate.setDate(selectedDate.getDate() + 1);
         setSelectedDate(newDate);
@@ -82,8 +82,51 @@ export default function CanteenMenuScreen({ navigation }: any) {
     };
 
 
+    const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
+
     const dateStr = formatDate(selectedDate);
     const dayData = menuData.find(item => item.date === dateStr);
+
+    const renderWeeklyTable = () => {
+        const days = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+        const datesInWeek: string[] = [];
+        const today = new Date();
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1)); // Monday
+        
+        for (let i = 0; i < 6; i++) {
+            const d = new Date(startOfWeek);
+            d.setDate(startOfWeek.getDate() + i);
+            datesInWeek.push(formatDate(d));
+        }
+
+        return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View style={[styles.table, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                    <View style={[styles.tableHeader, { backgroundColor: isDark ? '#1E293B' : '#f8f9fa', borderBottomColor: theme.border }]}>
+                        <View style={[styles.tableColHeader, { width: 90 }]}><Text style={[styles.tableHeaderText, { color: theme.textSecondary }]}>Thứ</Text></View>
+                        <View style={[styles.tableColHeader, { width: 140 }]}><Text style={[styles.tableHeaderText, { color: theme.textSecondary }]}>Bữa sáng</Text></View>
+                        <View style={[styles.tableColHeader, { width: 140 }]}><Text style={[styles.tableHeaderText, { color: theme.textSecondary }]}>Bữa trưa</Text></View>
+                        <View style={[styles.tableColHeader, { width: 140 }]}><Text style={[styles.tableHeaderText, { color: theme.textSecondary }]}>Bữa chiều</Text></View>
+                    </View>
+                    {days.map((day, idx) => {
+                        const dayMenu = menuData.find(m => m.date === datesInWeek[idx]);
+                        return (
+                            <View key={idx} style={[styles.tableRow, { borderBottomColor: theme.border }]}>
+                                <View style={[styles.tableCell, { width: 90, backgroundColor: isDark ? '#1E293B' : '#f8f9fa' }]}>
+                                    <Text style={[styles.dayText, { color: theme.text }]}>{day}</Text>
+                                    <Text style={[styles.dateSubText, { color: theme.textSecondary }]}>{datesInWeek[idx]}</Text>
+                                </View>
+                                <View style={[styles.tableCell, { width: 140 }]}><Text style={[styles.cellText, { color: theme.text }]} numberOfLines={3}>{dayMenu?.breakfast || '-'}</Text></View>
+                                <View style={[styles.tableCell, { width: 140 }]}><Text style={[styles.cellText, { color: theme.text }]} numberOfLines={3}>{dayMenu?.lunch || '-'}</Text></View>
+                                <View style={[styles.tableCell, { width: 140 }]}><Text style={[styles.cellText, { color: theme.text }]} numberOfLines={3}>{dayMenu?.snack || '-'}</Text></View>
+                            </View>
+                        );
+                    })}
+                </View>
+            </ScrollView>
+        );
+    };
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -96,70 +139,100 @@ export default function CanteenMenuScreen({ navigation }: any) {
                 <View style={{ width: 40 }} />
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
-                {/* Date Navigator */}
-                <View style={[styles.dateNavCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
-                    <TouchableOpacity style={styles.arrowBtn} onPress={goToPrev}>
-                        <Ionicons name="chevron-back" size={20} color={theme.primary} />
-                    </TouchableOpacity>
-
-                    <View style={styles.dateCenter}>
-                        <Text style={[styles.dayName, { color: theme.textSecondary }]}>{getDayName(selectedDate)}</Text>
-                        <View style={styles.dateRow}>
-                            <Ionicons name="calendar-outline" size={16} color={theme.primary} />
-                            <Text style={[styles.dateText, { color: theme.text }]}>{dateStr}</Text>
-                        </View>
-                    </View>
-
+            {/* View Mode Toggle */}
+            <View style={styles.toggleWrapper}>
+                <View style={[styles.toggleContainer, { backgroundColor: isDark ? '#1E293B' : '#f1f3f6' }]}>
                     <TouchableOpacity 
-                        style={[styles.arrowBtn, isFuture() && styles.arrowBtnDisabled]} 
-                        onPress={goToNext}
-                        disabled={isFuture()}
+                        style={[styles.toggleBtn, viewMode === 'daily' && [styles.toggleBtnActive, { backgroundColor: theme.surface }]]}
+                        onPress={() => setViewMode('daily')}
                     >
-                        <Ionicons name="chevron-forward" size={20} color={isFuture() ? (isDark ? '#4A5568' : '#ccc') : theme.primary} />
+                        <Text style={[styles.toggleText, viewMode === 'daily' ? { color: theme.primary, fontWeight: 'bold' } : { color: theme.textSecondary }]}>Theo ngày</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={[styles.toggleBtn, viewMode === 'weekly' && [styles.toggleBtnActive, { backgroundColor: theme.surface }]]}
+                        onPress={() => setViewMode('weekly')}
+                    >
+                        <Text style={[styles.toggleText, viewMode === 'weekly' ? { color: theme.primary, fontWeight: 'bold' } : { color: theme.textSecondary }]}>Theo tuần</Text>
                     </TouchableOpacity>
                 </View>
+            </View>
 
-                {/* Food Image */}
-                <View style={styles.imageContainer} key={dateStr}>
-                    <Image
-                        source={{ uri: (dayData?.imageUrl && dayData.imageUrl.length > 10) ? dayData.imageUrl : 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000' }}
-                        style={styles.foodImage}
-                        resizeMode="cover"
-                    />
-                    <View style={styles.imageDot} />
-                </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+                {viewMode === 'daily' ? (
+                    <>
+                        {/* Date Navigator */}
+                        <View style={[styles.dateNavCard, { backgroundColor: theme.surface, shadowColor: isDark ? '#000' : '#000' }]}>
+                            <TouchableOpacity style={styles.arrowBtn} onPress={goToPrev}>
+                                <Ionicons name="chevron-back" size={20} color={theme.primary} />
+                            </TouchableOpacity>
 
-                {/* Meal List */}
-                <View style={styles.mealList}>
-                    <MealRow
-                        bgColor={isDark ? '#4338ca' : '#FFF3E0'}
-                        iconColor={isDark ? '#c7d2fe' : '#E67E22'}
-                        iconName="cafe-outline"
-                        title="Bữa sáng"
-                        description={(dayData?.breakfast || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
-                        theme={theme}
-                        isDark={isDark}
-                    />
-                    <MealRow
-                        bgColor={isDark ? '#065f46' : '#E8F5E9'}
-                        iconColor={isDark ? '#a7f3d0' : '#27AE60'}
-                        iconName="restaurant-outline"
-                        title="Bữa trưa"
-                        description={(dayData?.lunch || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
-                        theme={theme}
-                        isDark={isDark}
-                    />
-                    <MealRow
-                        bgColor={isDark ? '#5b21b6' : '#F3E5F5'}
-                        iconColor={isDark ? '#ddd6fe' : '#9B59B6'}
-                        iconName="nutrition-outline"
-                        title="Bữa chiều"
-                        description={(dayData?.snack || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
-                        theme={theme}
-                        isDark={isDark}
-                    />
-                </View>
+                            <View style={styles.dateCenter}>
+                                <Text style={[styles.dayName, { color: theme.textSecondary }]}>{getDayName(selectedDate)}</Text>
+                                <View style={styles.dateRow}>
+                                    <Ionicons name="calendar-outline" size={16} color={theme.primary} />
+                                    <Text style={[styles.dateText, { color: theme.text }]}>{dateStr}</Text>
+                                </View>
+                            </View>
+
+                            <TouchableOpacity 
+                                style={[styles.arrowBtn, isAtMaxFuture() && styles.arrowBtnDisabled]} 
+                                onPress={goToNext}
+                                disabled={isAtMaxFuture()}
+                            >
+                                <Ionicons name="chevron-forward" size={20} color={isAtMaxFuture() ? (isDark ? '#4A5568' : '#ccc') : theme.primary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Food Image */}
+                        <View style={styles.imageContainer} key={dateStr}>
+                            <Image
+                                source={{ uri: (dayData?.imageUrl && dayData.imageUrl.length > 10) ? dayData.imageUrl : 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000' }}
+                                style={styles.foodImage}
+                                resizeMode="cover"
+                            />
+                            <View style={styles.imageDot} />
+                        </View>
+
+                        {/* Meal List */}
+                        <View style={styles.mealList}>
+                            <MealRow
+                                bgColor={isDark ? '#4338ca' : '#FFF3E0'}
+                                iconColor={isDark ? '#c7d2fe' : '#E67E22'}
+                                iconName="cafe-outline"
+                                title="Bữa sáng"
+                                description={(dayData?.breakfast || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
+                                theme={theme}
+                                isDark={isDark}
+                            />
+                            <MealRow
+                                bgColor={isDark ? '#065f46' : '#E8F5E9'}
+                                iconColor={isDark ? '#a7f3d0' : '#27AE60'}
+                                iconName="restaurant-outline"
+                                title="Bữa trưa"
+                                description={(dayData?.lunch || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
+                                theme={theme}
+                                isDark={isDark}
+                            />
+                            <MealRow
+                                bgColor={isDark ? '#5b21b6' : '#F3E5F5'}
+                                iconColor={isDark ? '#ddd6fe' : '#9B59B6'}
+                                iconName="nutrition-outline"
+                                title="Bữa chiều"
+                                description={(dayData?.snack || 'Chưa có thông tin').replace(/\(Ngày \d+\)/, '').trim()}
+                                theme={theme}
+                                isDark={isDark}
+                            />
+                        </View>
+                    </>
+                ) : (
+                    <View style={{ paddingHorizontal: 16, marginTop: 10 }}>
+                        <View style={[styles.infoBanner, { backgroundColor: isDark ? '#1E293B' : '#eef2f9' }]}>
+                            <Ionicons name="information-circle-outline" size={20} color={theme.primary} />
+                            <Text style={[styles.infoBannerText, { color: theme.textSecondary }]}>Thực đơn có thể thay đổi tùy theo điều kiện thực tế của nhà trường.</Text>
+                        </View>
+                        {renderWeeklyTable()}
+                    </View>
+                )}
             </ScrollView>
         </SafeAreaView>
     );
@@ -233,4 +306,25 @@ const styles = StyleSheet.create({
     mealInfo: { flex: 1 },
     mealTitle: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50', marginBottom: 4 },
     mealDesc: { fontSize: 13, color: '#7f8c8d', lineHeight: 18 },
+    
+    // Toggle
+    toggleWrapper: { alignItems: 'center', marginTop: 15, marginBottom: 5 },
+    toggleContainer: { flexDirection: 'row', borderRadius: 12, padding: 4, width: width - 32 },
+    toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    toggleBtnActive: { elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+    toggleText: { fontSize: 14 },
+
+    // Table
+    table: { borderWidth: 1, borderRadius: 12, overflow: 'hidden', marginTop: 10 },
+    tableHeader: { flexDirection: 'row', borderBottomWidth: 1 },
+    tableColHeader: { padding: 12, justifyContent: 'center', alignItems: 'center' },
+    tableHeaderText: { fontSize: 13, fontWeight: '700' },
+    tableRow: { flexDirection: 'row', borderBottomWidth: 1 },
+    tableCell: { padding: 12, justifyContent: 'center' },
+    dayText: { fontSize: 14, fontWeight: 'bold' },
+    dateSubText: { fontSize: 11, marginTop: 2 },
+    cellText: { fontSize: 13, lineHeight: 18 },
+
+    infoBanner: { flexDirection: 'row', padding: 12, borderRadius: 12, marginBottom: 15, alignItems: 'center' },
+    infoBannerText: { flex: 1, marginLeft: 10, fontSize: 12, lineHeight: 18 },
 });

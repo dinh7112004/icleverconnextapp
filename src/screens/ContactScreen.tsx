@@ -103,8 +103,7 @@ export default function ContactScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-            {/* --- HEADER (FIXED) --- */}
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
             <UserHeader userData={userData} studentInfo={studentInfo} isReady={hasLoadedCache} />
 
             <ScrollView 
@@ -170,7 +169,7 @@ export default function ContactScreen({ navigation }: any) {
 
                 <View style={{ height: 100 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

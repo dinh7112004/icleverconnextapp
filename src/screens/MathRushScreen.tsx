@@ -33,6 +33,17 @@ export default function MathRushScreen({ navigation }: any) {
             setUser(u);
             const gradeLevel = u?.level || 6;
             
+            // Trừ 5 xu trước khi chơi
+            await gameApi.startGame('math_rush', 5);
+
+            // Cập nhật lại cache (trừ 5 xu)
+            const freshProfile = await userApi.getProfile();
+            const freshUser = freshProfile.data.data || freshProfile.data;
+            if (freshUser) {
+                await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+                setUser(freshUser);
+            }
+
             const response = await gameApi.getQuestions(gradeLevel);
             if (response.data.success) {
                 const fetchedQuestions = response.data.data;
@@ -44,7 +55,8 @@ export default function MathRushScreen({ navigation }: any) {
             }
         } catch (error: any) {
             console.error('Game initialization error:', error);
-            Alert.alert('Lỗi', 'Không thể chuẩn bị phòng thi. Vui lòng thử lại sau.');
+            const msg = error.response?.data?.message || 'Không thể chuẩn bị phòng thi. Vui lòng thử lại sau.';
+            Alert.alert('Lỗi', msg);
             navigation.goBack();
         }
     };

@@ -19,7 +19,15 @@ export default function ChatDetailScreen({ route, navigation }: any) {
     const [messages, setMessages] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [inputText, setInputText] = useState('');
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
     const flatListRef = useRef<FlatList>(null);
+
+    useEffect(() => {
+        const showSub = Keyboard.addListener('keyboardDidShow', () => {
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        });
+        return () => showSub.remove();
+    }, []);
 
     useEffect(() => {
         fetchMessages();
@@ -38,6 +46,10 @@ export default function ChatDetailScreen({ route, navigation }: any) {
             }));
             
             setMessages(formattedMessages);
+            // Cuộn xuống cuối sau khi load xong
+            setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: false });
+            }, 100);
         } catch (error) {
             console.error('Error fetching messages:', error);
         } finally {
@@ -121,9 +133,9 @@ export default function ChatDetailScreen({ route, navigation }: any) {
             </View>
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1, backgroundColor: theme.background }}
+                keyboardVerticalOffset={0}
             >
                 <View style={{ flex: 1 }}>
                     {loading ? (

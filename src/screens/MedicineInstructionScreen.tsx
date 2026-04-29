@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
     SafeAreaView, ActivityIndicator, TextInput, Alert, Dimensions,
-    Modal, Platform, Image, Linking
+    Modal, Platform, Image, Linking, KeyboardAvoidingView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -131,10 +131,12 @@ export default function MedicineInstructionScreen({ navigation }: any) {
 
             await medicineApi.submit(payload);
             Alert.alert('Thành công', 'Đã gửi phiếu dặn thuốc thành công!', [
-                { text: 'OK', onPress: () => {
-                    setMode('list');
-                    loadInitialData();
-                }}
+                {
+                    text: 'OK', onPress: () => {
+                        setMode('list');
+                        loadInitialData();
+                    }
+                }
             ]);
             // Reset
             setName(''); setDosage(''); setTime(''); setNote(''); setAttachment(null);
@@ -174,143 +176,149 @@ export default function MedicineInstructionScreen({ navigation }: any) {
                 ) : <View style={{ width: 40 }} />}
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {mode === 'list' ? (
-                    <>
-                        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>DANH SÁCH DẶN THUỐC</Text>
-                        {instructions.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <MaterialCommunityIcons name="pill-off" size={64} color={isDark ? '#2D3748' : '#e2e8f0'} />
-                                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Chưa có lịch sử dặn thuốc</Text>
-                            </View>
-                        ) : (
-                            instructions.map((item, idx) => (
-                                <View key={item.id || idx} style={[styles.historyCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
-                                    <View style={styles.cardHeader}>
-                                        <Text style={[styles.cardDate, { color: theme.textSecondary }]}>{item.date}</Text>
-                                        {renderStatusBadge(item.status)}
-                                    </View>
-                                    <View style={styles.cardMain}>
-                                        <View style={[styles.medIconBox, { backgroundColor: isDark ? '#065f46' : '#e0f2f1' }]}>
-                                            <MaterialCommunityIcons name="pill" size={24} color={isDark ? '#34d399' : '#009688'} />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'position' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
+            >
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {mode === 'list' ? (
+                        <>
+                            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>DANH SÁCH DẶN THUỐC</Text>
+                            {instructions.length === 0 ? (
+                                <View style={styles.emptyState}>
+                                    <MaterialCommunityIcons name="pill-off" size={64} color={isDark ? '#2D3748' : '#e2e8f0'} />
+                                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Chưa có lịch sử dặn thuốc</Text>
+                                </View>
+                            ) : (
+                                instructions.map((item, idx) => (
+                                    <View key={item.id || idx} style={[styles.historyCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
+                                        <View style={styles.cardHeader}>
+                                            <Text style={[styles.cardDate, { color: theme.textSecondary }]}>{item.date}</Text>
+                                            {renderStatusBadge(item.status)}
                                         </View>
-                                        <View style={styles.medDetails}>
-                                            <Text style={[styles.medName, { color: theme.text }]}>{item.name}</Text>
-                                            <View style={styles.medInfoRow}>
-                                                <Text style={[styles.medInfoLabel, { color: theme.textSecondary }]}>Liều: <Text style={[styles.medInfoValue, { color: theme.text }]}>{item.dosage}</Text></Text>
-                                                <View style={[styles.verticalDivider, { backgroundColor: theme.border }]} />
-                                                <Text style={[styles.medInfoLabel, { color: theme.textSecondary }]}>Giờ: <Text style={[styles.medInfoValue, { color: theme.text }]}>{item.time}</Text></Text>
+                                        <View style={styles.cardMain}>
+                                            <View style={[styles.medIconBox, { backgroundColor: isDark ? '#065f46' : '#e0f2f1' }]}>
+                                                <MaterialCommunityIcons name="pill" size={24} color={isDark ? '#34d399' : '#009688'} />
+                                            </View>
+                                            <View style={styles.medDetails}>
+                                                <Text style={[styles.medName, { color: theme.text }]}>{item.name}</Text>
+                                                <View style={styles.medInfoRow}>
+                                                    <Text style={[styles.medInfoLabel, { color: theme.textSecondary }]}>Liều: <Text style={[styles.medInfoValue, { color: theme.text }]}>{item.dosage}</Text></Text>
+                                                    <View style={[styles.verticalDivider, { backgroundColor: theme.border }]} />
+                                                    <Text style={[styles.medInfoLabel, { color: theme.textSecondary }]}>Giờ: <Text style={[styles.medInfoValue, { color: theme.text }]}>{item.time}</Text></Text>
+                                                </View>
                                             </View>
                                         </View>
+                                        {item.note ? (
+                                            <View style={[styles.noteBox, { backgroundColor: isDark ? '#1E293B' : '#f8fafc' }]}>
+                                                <Text style={[styles.noteText, { color: theme.textSecondary }]}>"{item.note}"</Text>
+                                            </View>
+                                        ) : null}
+                                        {item.imageUrl ? (
+                                            <TouchableOpacity
+                                                style={styles.attachmentLink}
+                                                onPress={() => Linking.openURL(item.imageUrl)}
+                                            >
+                                                <Ionicons name="image-outline" size={16} color={theme.primary} />
+                                                <Text style={[styles.attachmentText, { color: theme.primary }]}>Xem ảnh thuốc</Text>
+                                            </TouchableOpacity>
+                                        ) : null}
                                     </View>
-                                    {item.note ? (
-                                        <View style={[styles.noteBox, { backgroundColor: isDark ? '#1E293B' : '#f8fafc' }]}>
-                                            <Text style={[styles.noteText, { color: theme.textSecondary }]}>"{item.note}"</Text>
-                                        </View>
-                                    ) : null}
-                                    {item.imageUrl ? (
-                                        <TouchableOpacity 
-                                            style={styles.attachmentLink}
-                                            onPress={() => Linking.openURL(item.imageUrl)}
-                                        >
-                                            <Ionicons name="image-outline" size={16} color={theme.primary} />
-                                            <Text style={[styles.attachmentText, { color: theme.primary }]}>Xem ảnh thuốc</Text>
-                                        </TouchableOpacity>
-                                    ) : null}
-                                </View>
-                            ))
-                        )}
-                    </>
-                ) : (
-                    <View style={[styles.formCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
-                        <Text style={[styles.formHeaderTitle, { color: theme.text }]}>Tạo phiếu dặn thuốc</Text>
-                        
-                        <View style={styles.inputWrapper}>
-                            <Text style={[styles.label, { color: theme.textSecondary }]}>Tên thuốc <Text style={{ color: 'red' }}>*</Text></Text>
-                            <TextInput 
-                                style={[styles.input, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
-                                placeholder="Ví dụ: Siro Prospan, Efferalgan..."
-                                placeholderTextColor={theme.textSecondary}
-                                value={name}
-                                onChangeText={setName}
-                            />
-                        </View>
+                                ))
+                            )}
+                        </>
+                    ) : (
+                        <View style={[styles.formCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
+                            <Text style={[styles.formHeaderTitle, { color: theme.text }]}>Tạo phiếu dặn thuốc</Text>
 
-                        <View style={styles.row}>
-                            <View style={[styles.inputWrapper, { flex: 1, marginRight: 12 }]}>
-                                <Text style={[styles.label, { color: theme.textSecondary }]}>Liều lượng <Text style={{ color: 'red' }}>*</Text></Text>
-                                <TextInput 
+                            <View style={styles.inputWrapper}>
+                                <Text style={[styles.label, { color: theme.textSecondary }]}>Tên thuốc <Text style={{ color: 'red' }}>*</Text></Text>
+                                <TextInput
                                     style={[styles.input, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
-                                    placeholder="Ví dụ: 5ml, 1 gói..."
+                                    placeholder="Ví dụ: Siro Prospan, Efferalgan..."
                                     placeholderTextColor={theme.textSecondary}
-                                    value={dosage}
-                                    onChangeText={setDosage}
+                                    value={name}
+                                    onChangeText={setName}
                                 />
                             </View>
-                            <View style={[styles.inputWrapper, { flex: 1 }]}>
-                                <Text style={[styles.label, { color: theme.textSecondary }]}>Giờ uống <Text style={{ color: 'red' }}>*</Text></Text>
-                                <TouchableOpacity 
-                                    style={[styles.timeInputBox, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border }]}
-                                    onPress={() => setShowTimePicker(true)}
+
+                            <View style={styles.row}>
+                                <View style={[styles.inputWrapper, { flex: 1, marginRight: 12 }]}>
+                                    <Text style={[styles.label, { color: theme.textSecondary }]}>Liều lượng <Text style={{ color: 'red' }}>*</Text></Text>
+                                    <TextInput
+                                        style={[styles.input, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
+                                        placeholder="Ví dụ: 5ml, 1 gói..."
+                                        placeholderTextColor={theme.textSecondary}
+                                        value={dosage}
+                                        onChangeText={setDosage}
+                                    />
+                                </View>
+                                <View style={[styles.inputWrapper, { flex: 1 }]}>
+                                    <Text style={[styles.label, { color: theme.textSecondary }]}>Giờ uống <Text style={{ color: 'red' }}>*</Text></Text>
+                                    <TouchableOpacity
+                                        style={[styles.timeInputBox, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border }]}
+                                        onPress={() => setShowTimePicker(true)}
+                                    >
+                                        <Text style={[styles.timeTextValue, { color: theme.text }, !time && { color: theme.textSecondary }]}>
+                                            {time || '08:00 AM'}
+                                        </Text>
+                                        <Ionicons name="time-outline" size={20} color={theme.textSecondary} />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <View style={styles.inputWrapper}>
+                                <Text style={[styles.label, { color: theme.textSecondary }]}>Ghi chú thêm cho giáo viên</Text>
+                                <TextInput
+                                    style={[styles.input, styles.textArea, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
+                                    placeholder="Uống sau ăn 30 phút, nhờ cô theo dõi con..."
+                                    placeholderTextColor={theme.textSecondary}
+                                    multiline
+                                    numberOfLines={4}
+                                    value={note}
+                                    onChangeText={setNote}
+                                    textAlignVertical="top"
+                                />
+                            </View>
+
+                            <Text style={[styles.label, { color: theme.textSecondary }]}>Ảnh thuốc hoặc đơn thuốc</Text>
+                            <TouchableOpacity style={[styles.uploadBox, { backgroundColor: isDark ? '#1E293B' : '#f0f9f8', borderColor: theme.primary }]} onPress={pickImage}>
+                                {attachment ? (
+                                    <View style={styles.attachmentPreview}>
+                                        <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
+                                        <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>{attachment.fileName || 'medicine.jpg'}</Text>
+                                        <TouchableOpacity onPress={() => setAttachment(null)}>
+                                            <Ionicons name="close-circle" size={22} color="#e74c3c" />
+                                        </TouchableOpacity>
+                                    </View>
+                                ) : (
+                                    <>
+                                        <View style={[styles.uploadIconCircle, { backgroundColor: theme.surface }]}>
+                                            <Ionicons name="camera" size={32} color={theme.primary} />
+                                        </View>
+                                        <Text style={[styles.uploadTitle, { color: theme.text }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                                        <Text style={[styles.uploadSubText, { color: theme.textSecondary }]}>PNG, JPG tối đa 5MB</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+
+                            <View style={styles.formActions}>
+                                <TouchableOpacity style={[styles.btnCancel, { backgroundColor: isDark ? '#2D3748' : '#f1f5f9' }]} onPress={() => setMode('list')}>
+                                    <Text style={[styles.btnCancelText, { color: theme.textSecondary }]}>Hủy bỏ</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.btnSubmit, { backgroundColor: theme.primary }, submitting && { opacity: 0.7 }]}
+                                    onPress={handleSubmit}
+                                    disabled={submitting}
                                 >
-                                    <Text style={[styles.timeTextValue, { color: theme.text }, !time && { color: theme.textSecondary }]}>
-                                        {time || '08:00 AM'}
-                                    </Text>
-                                    <Ionicons name="time-outline" size={20} color={theme.textSecondary} />
+                                    {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.btnSubmitText}>Gửi dặn thuốc</Text>}
                                 </TouchableOpacity>
                             </View>
                         </View>
-
-                        <View style={styles.inputWrapper}>
-                            <Text style={[styles.label, { color: theme.textSecondary }]}>Ghi chú thêm cho giáo viên</Text>
-                            <TextInput 
-                                style={[styles.input, styles.textArea, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
-                                placeholder="Uống sau ăn 30 phút, nhờ cô theo dõi con..."
-                                placeholderTextColor={theme.textSecondary}
-                                multiline
-                                numberOfLines={4}
-                                value={note}
-                                onChangeText={setNote}
-                                textAlignVertical="top"
-                            />
-                        </View>
-
-                        <Text style={[styles.label, { color: theme.textSecondary }]}>Ảnh thuốc hoặc đơn thuốc</Text>
-                        <TouchableOpacity style={[styles.uploadBox, { backgroundColor: isDark ? '#1E293B' : '#f0f9f8', borderColor: theme.primary }]} onPress={pickImage}>
-                            {attachment ? (
-                                <View style={styles.attachmentPreview}>
-                                    <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
-                                    <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>{attachment.fileName || 'medicine.jpg'}</Text>
-                                    <TouchableOpacity onPress={() => setAttachment(null)}>
-                                        <Ionicons name="close-circle" size={22} color="#e74c3c" />
-                                    </TouchableOpacity>
-                                </View>
-                            ) : (
-                                <>
-                                    <View style={[styles.uploadIconCircle, { backgroundColor: theme.surface }]}>
-                                        <Ionicons name="camera" size={32} color={theme.primary} />
-                                    </View>
-                                    <Text style={[styles.uploadTitle, { color: theme.text }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
-                                    <Text style={[styles.uploadSubText, { color: theme.textSecondary }]}>PNG, JPG tối đa 5MB</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-
-                        <View style={styles.formActions}>
-                            <TouchableOpacity style={[styles.btnCancel, { backgroundColor: isDark ? '#2D3748' : '#f1f5f9' }]} onPress={() => setMode('list')}>
-                                <Text style={[styles.btnCancelText, { color: theme.textSecondary }]}>Hủy bỏ</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.btnSubmit, { backgroundColor: theme.primary }, submitting && { opacity: 0.7 }]} 
-                                onPress={handleSubmit}
-                                disabled={submitting}
-                            >
-                                {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.btnSubmitText}>Gửi dặn thuốc</Text>}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                )}
-            </ScrollView>
+                    )}
+                </ScrollView>
+            </KeyboardAvoidingView>
 
             {/* 3-Column Time Picker Modal */}
             <Modal
@@ -333,7 +341,7 @@ export default function MedicineInstructionScreen({ navigation }: any) {
                                 <Text style={[styles.pickerDone, { color: theme.primary }]}>Xong</Text>
                             </TouchableOpacity>
                         </View>
-                        
+
                         <View style={styles.pickerBody}>
                             {/* Hours Column */}
                             <ScrollView style={styles.pickerCol} showsVerticalScrollIndicator={false}>
@@ -343,7 +351,7 @@ export default function MedicineInstructionScreen({ navigation }: any) {
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
-                            
+
                             {/* Minutes Column */}
                             <ScrollView style={styles.pickerCol} showsVerticalScrollIndicator={false}>
                                 {minutes.map(m => (
@@ -352,7 +360,7 @@ export default function MedicineInstructionScreen({ navigation }: any) {
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
-                            
+
                             {/* AM/PM Column */}
                             <ScrollView style={styles.pickerCol} showsVerticalScrollIndicator={false}>
                                 {periods.map(p => (
@@ -397,7 +405,7 @@ const styles = StyleSheet.create({
     cardDate: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
     statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 4 },
     statusText: { fontSize: 12, fontWeight: '700' },
-    
+
     cardMain: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     medIconBox: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#e0f2f1', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
     medDetails: { flex: 1 },
@@ -406,7 +414,7 @@ const styles = StyleSheet.create({
     medInfoLabel: { fontSize: 14, color: '#64748b' },
     medInfoValue: { fontWeight: '700', color: '#334155' },
     verticalDivider: { width: 1, height: 12, backgroundColor: '#e2e8f0' },
-    
+
     noteBox: { backgroundColor: '#f8fafc', borderRadius: 12, padding: 12, marginBottom: 12 },
     noteText: { fontSize: 14, color: '#475569', fontStyle: 'italic' },
     attachmentLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
@@ -424,18 +432,18 @@ const styles = StyleSheet.create({
     formHeaderTitle: { fontSize: 20, fontWeight: '800', color: '#1e293b', marginBottom: 24 },
     inputWrapper: { marginBottom: 20 },
     label: { fontSize: 14, fontWeight: '700', color: '#475569', marginBottom: 8 },
-    input: { 
+    input: {
         backgroundColor: '#f8fafc', borderRadius: 12, padding: 14, fontSize: 15, color: '#1e293b',
         borderWidth: 1, borderColor: '#e2e8f0'
     },
     row: { flexDirection: 'row' },
-    timeInputBox: { 
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, 
+    timeInputBox: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12,
         borderWidth: 1, borderColor: '#e2e8f0', paddingRight: 12, paddingLeft: 14, height: 54
     },
     timeTextValue: { flex: 1, fontSize: 15, color: '#1e293b' },
     textArea: { minHeight: 100 },
-    
+
     uploadBox: {
         borderWidth: 1.5, borderColor: '#009688', borderStyle: 'dashed', borderRadius: 16,
         padding: 24, alignItems: 'center', backgroundColor: '#f0f9f8', marginTop: 8, marginBottom: 32
@@ -443,7 +451,7 @@ const styles = StyleSheet.create({
     uploadIconCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
     uploadTitle: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
     uploadSubText: { fontSize: 12, color: '#64748b', marginTop: 4 },
-    
+
     attachmentPreview: { flexDirection: 'row', alignItems: 'center', width: '100%', gap: 12 },
     attachmentThumb: { width: 56, height: 56, borderRadius: 10 },
     attachmentName: { flex: 1, fontSize: 15, color: '#1e293b', fontWeight: '600' },

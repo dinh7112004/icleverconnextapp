@@ -89,8 +89,9 @@ export default function ChangePasswordScreen({ navigation }: any) {
             </View>
 
             <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'position' : 'height'}
                 style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
             >
                 <ScrollView contentContainerStyle={styles.scrollContent}>
                     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>

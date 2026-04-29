@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     StyleSheet, Text, View, ScrollView,
     TouchableOpacity, SafeAreaView, ActivityIndicator,
-    StatusBar, Dimensions, Modal, Alert, TextInput
+    StatusBar, Dimensions, Modal, Alert, TextInput,
+    KeyboardAvoidingView, Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -166,7 +167,11 @@ export default function SurveyScreen({ navigation }: any) {
                 onRequestClose={() => setTakingModal(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContainer, { backgroundColor: theme.surface }]}>
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={[styles.modalContainer, { backgroundColor: theme.surface }]}
+                        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                    >
                         <View style={[styles.modalIndicator, { backgroundColor: theme.border }]} />
                         <View style={[styles.modalHeaderInner, { borderBottomColor: theme.border }]}>
                             <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedSurvey?.title}</Text>
@@ -234,7 +239,7 @@ export default function SurveyScreen({ navigation }: any) {
                                 {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.submitBtnText}>Gửi phản hồi</Text>}
                             </TouchableOpacity>
                         </View>
-                    </View>
+                    </KeyboardAvoidingView>
                 </View>
             </Modal>
         </SafeAreaView>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, TouchableOpacity,
-    SafeAreaView, ActivityIndicator, TextInput, Alert, Dimensions
+    SafeAreaView, ActivityIndicator, TextInput, Alert, Dimensions,
+    KeyboardAvoidingView, Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
@@ -204,58 +205,64 @@ export default function StudentNotesScreen({ navigation }: any) {
                     <View style={{ width: 40 }} />
                 </View>
 
-                <ScrollView contentContainerStyle={{ padding: 16 }}>
-                    <View style={[styles.formCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
-                        <Text style={[styles.formTitle, { color: theme.text }]}>Thêm lưu ý mới</Text>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'position' : 'height'}
+                    style={{ flex: 1 }}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
+                >
+                    <ScrollView contentContainerStyle={{ padding: 16 }}>
+                        <View style={[styles.formCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: isDark ? '#000' : '#000' }]}>
+                            <Text style={[styles.formTitle, { color: theme.text }]}>Thêm lưu ý mới</Text>
 
-                        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Loại lưu ý</Text>
-                        <View style={styles.typeGrid}>
-                            {types.map((t) => (
-                                <TouchableOpacity
-                                    key={t.key}
-                                    style={[styles.typeItem, { backgroundColor: theme.surface, borderColor: theme.border }, formType === t.key && [styles.typeItemActive, { backgroundColor: isDark ? '#1E293B' : '#f0f4f8', borderColor: theme.text }]]}
-                                    onPress={() => setFormType(t.key)}
-                                >
-                                    <View style={styles.typeIconBox}>
-                                        {renderCategoryIcon(t.key, 20, formType === t.key ? theme.text : theme.textSecondary)}
-                                    </View>
-                                    <Text style={[styles.typeItemText, { color: theme.textSecondary }, formType === t.key && [styles.typeItemTextActive, { color: theme.text }]]}>{t.label}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        <Text style={[styles.fieldLabel, { marginTop: 20, color: theme.textSecondary }]}>Nội dung chi tiết</Text>
-                        <TextInput
-                            style={[styles.reasonInput, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
-                            placeholder="Ví dụ: Cháu bị dị ứng với tôm..."
-                            placeholderTextColor={theme.textSecondary}
-                            value={formContent}
-                            onChangeText={setFormContent}
-                            multiline
-                            textAlignVertical="top"
-                        />
-
-                        <TouchableOpacity
-                            style={[styles.importantYellowBox, { backgroundColor: isDark ? '#1E293B' : '#fffbeb', borderColor: isDark ? '#2D3748' : '#fef3c7' }]}
-                            onPress={() => setFormIsImportant(!formIsImportant)}
-                            activeOpacity={0.7}
-                        >
-                            <View style={[styles.checkbox, { backgroundColor: theme.surface, borderColor: theme.border }, formIsImportant && [styles.checkboxActive, { backgroundColor: theme.primary, borderColor: theme.primary }]]}>
-                                {formIsImportant && <Ionicons name="checkmark" size={14} color="white" />}
+                            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Loại lưu ý</Text>
+                            <View style={styles.typeGrid}>
+                                {types.map((t) => (
+                                    <TouchableOpacity
+                                        key={t.key}
+                                        style={[styles.typeItem, { backgroundColor: theme.surface, borderColor: theme.border }, formType === t.key && [styles.typeItemActive, { backgroundColor: isDark ? '#1E293B' : '#f0f4f8', borderColor: theme.text }]]}
+                                        onPress={() => setFormType(t.key)}
+                                    >
+                                        <View style={styles.typeIconBox}>
+                                            {renderCategoryIcon(t.key, 20, formType === t.key ? theme.text : theme.textSecondary)}
+                                        </View>
+                                        <Text style={[styles.typeItemText, { color: theme.textSecondary }, formType === t.key && [styles.typeItemTextActive, { color: theme.text }]]}>{t.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
                             </View>
-                            <Text style={[styles.importantYellowText, { color: theme.text }]}>Đánh dấu quan trọng (Ghim đầu trang)</Text>
-                        </TouchableOpacity>
 
-                        <View style={styles.formFooter}>
-                            <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: isDark ? '#2D3748' : '#f1f5f9' }]} onPress={() => setScreen('list')}>
-                                <Text style={[styles.cancelBtnText, { color: theme.textSecondary }]}>Hủy</Text>
+                            <Text style={[styles.fieldLabel, { marginTop: 20, color: theme.textSecondary }]}>Nội dung chi tiết</Text>
+                            <TextInput
+                                style={[styles.reasonInput, { backgroundColor: isDark ? '#1E293B' : '#f8fafc', borderColor: theme.border, color: theme.text }]}
+                                placeholder="Ví dụ: Cháu bị dị ứng với tôm..."
+                                placeholderTextColor={theme.textSecondary}
+                                value={formContent}
+                                onChangeText={setFormContent}
+                                multiline
+                                textAlignVertical="top"
+                            />
+
+                            <TouchableOpacity
+                                style={[styles.importantYellowBox, { backgroundColor: isDark ? '#1E293B' : '#fffbeb', borderColor: isDark ? '#2D3748' : '#fef3c7' }]}
+                                onPress={() => setFormIsImportant(!formIsImportant)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.checkbox, { backgroundColor: theme.surface, borderColor: theme.border }, formIsImportant && [styles.checkboxActive, { backgroundColor: theme.primary, borderColor: theme.primary }]]}>
+                                    {formIsImportant && <Ionicons name="checkmark" size={14} color="white" />}
+                                </View>
+                                <Text style={[styles.importantYellowText, { color: theme.text }]}>Đánh dấu quan trọng (Ghim đầu trang)</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: theme.primary }]} onPress={handleSubmit} disabled={submitting}>
-                                {submitting ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.submitBtnText}>Lưu lại</Text>}
-                            </TouchableOpacity>
+
+                            <View style={styles.formFooter}>
+                                <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: isDark ? '#2D3748' : '#f1f5f9' }]} onPress={() => setScreen('list')}>
+                                    <Text style={[styles.cancelBtnText, { color: theme.textSecondary }]}>Hủy</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: theme.primary }]} onPress={handleSubmit} disabled={submitting}>
+                                    {submitting ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.submitBtnText}>Lưu lại</Text>}
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                    </View>
-                </ScrollView>
+                    </ScrollView>
+                </KeyboardAvoidingView>
             </SafeAreaView>
         );
     }
